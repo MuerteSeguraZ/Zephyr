@@ -1,14 +1,18 @@
 
 #define _WIN32_WINNT 0x0601  
 
-// Includes (headers)
+// Includes (headers, windows)
 #include <winsock2.h>        
 #include <ws2tcpip.h>        
 #include <iphlpapi.h>        
 #include <icmpapi.h>
-#include <windows.h>        
-#include <shlobj.h> 
-#include <winhttp.h>         
+#include <windows.h>  
+#include <initguid.h>
+#include <devguid.h> 
+#include <shlobj.h>
+#include <knownfolders.h>
+#include <winhttp.h>
+#include <usbiodef.h>         
 #include <cfgmgr32.h>
 #include <Lmcons.h>
 #include <setupapi.h>
@@ -17,7 +21,7 @@
 #include <intrin.h>
 #include <lm.h>
 
-// Includes (normal packages)
+// Includes (packets normals (venen amb c++))
 #include <iostream>
 #include <algorithm>
 #include <string>
@@ -52,7 +56,6 @@
 #define ANSI_CYAN          "\x1b[36m"
 #define ANSI_WHITE         "\x1b[37m"
 
-// Bold Colors
 #define ANSI_BOLD_BLACK    "\x1b[1;30m"
 #define ANSI_BOLD_RED      "\x1b[1;31m"
 #define ANSI_BOLD_GREEN    "\x1b[1;32m"
@@ -62,7 +65,6 @@
 #define ANSI_BOLD_CYAN     "\x1b[1;36m"
 #define ANSI_BOLD_WHITE    "\x1b[1;37m"
 
-// Underlined Colors
 #define ANSI_UNDERLINE_BLACK   "\x1b[4;30m"
 #define ANSI_UNDERLINE_RED     "\x1b[4;31m"
 #define ANSI_UNDERLINE_GREEN   "\x1b[4;32m"
@@ -72,7 +74,6 @@
 #define ANSI_UNDERLINE_CYAN    "\x1b[4;36m"
 #define ANSI_UNDERLINE_WHITE   "\x1b[4;37m"
 
-// Background Colors
 #define ANSI_BG_BLACK     "\x1b[40m"
 #define ANSI_BG_RED       "\x1b[41m"
 #define ANSI_BG_GREEN     "\x1b[42m"
@@ -82,7 +83,6 @@
 #define ANSI_BG_CYAN      "\x1b[46m"
 #define ANSI_BG_WHITE     "\x1b[47m"
 
-// High Intensity Foreground
 #define ANSI_INTENSE_BLACK     "\x1b[90m"
 #define ANSI_INTENSE_RED       "\x1b[91m"
 #define ANSI_INTENSE_GREEN     "\x1b[92m"
@@ -92,7 +92,6 @@
 #define ANSI_INTENSE_CYAN      "\x1b[96m"
 #define ANSI_INTENSE_WHITE     "\x1b[97m"
 
-// High Intensity Background
 #define ANSI_BG_INTENSE_BLACK     "\x1b[100m"
 #define ANSI_BG_INTENSE_RED       "\x1b[101m"
 #define ANSI_BG_INTENSE_GREEN     "\x1b[102m"
@@ -102,7 +101,6 @@
 #define ANSI_BG_INTENSE_CYAN      "\x1b[106m"
 #define ANSI_BG_INTENSE_WHITE     "\x1b[107m"
 
-// Special Styles
 #define ANSI_RESET         "\x1b[0m"
 #define ANSI_BOLD          "\x1b[1m"
 #define ANSI_DIM           "\x1b[2m"
@@ -199,6 +197,7 @@ void CmdDnsFlush(const std::string& args);
 void CmdFirewallStatus(const std::string& args);
 void CmdDrives(const std::string& args);
 void CmdSmartStatus(const std::string& args);
+void CmdLsusb(const std::string& args);
 void DeleteContents(const fs::path& dir);
 
 std::unordered_map<std::string, std::function<void(const std::string&)>> commands = {
@@ -218,7 +217,7 @@ std::unordered_map<std::string, std::function<void(const std::string&)>> command
     {"tempclean", CmdTempClean}, {"killtree", CmdKillTree}, {"pingtest", CmdPingTest}, 
     {"get", CmdHttpGet}, {"post", CmdHttpPost}, {"head", CmdHttpHead}, {"scan", CmdScanWrapper}, {"hop", CmdHop}, {"stat", CmdStat},
     {"checkadmin", CmdCheckAdminWrapper}, {"listusers", CmdListUsersWrapper}, {"dnsflush", CmdDnsFlush},
-    {"firewall", CmdFirewallStatus}, {"drives", CmdDrives}, {"smart", CmdSmartStatus}
+    {"firewall", CmdFirewallStatus}, {"drives", CmdDrives}, {"smart", CmdSmartStatus}, {"lsusb", CmdLsusb}
 };
 
 
@@ -324,6 +323,55 @@ void CmdListUsersWrapper(const std::string& args) {
     }
 
     if (pBuf != nullptr) NetApiBufferFree(pBuf);
+}
+
+void CmdLsusb(const std::string& args) {
+    if (!args.empty()) {
+        std::cout << "Usage: lsusb" << std::endl;
+        return;
+    }
+
+    HDEVINFO deviceInfoSet = SetupDiGetClassDevs(&GUID_DEVINTERFACE_USB_DEVICE, nullptr, nullptr, DIGCF_PRESENT | DIGCF_DEVICEINTERFACE);
+    if (deviceInfoSet == INVALID_HANDLE_VALUE) {
+        std::cout << "Failed to get USB device list." << std::endl;
+        return;
+    }
+
+    SP_DEVICE_INTERFACE_DATA deviceInterfaceData = {};
+    deviceInterfaceData.cbSize = sizeof(SP_DEVICE_INTERFACE_DATA);
+
+    std::cout << "Connected USB Devices:\n";
+
+    for (DWORD i = 0; SetupDiEnumDeviceInterfaces(deviceInfoSet, nullptr, &GUID_DEVINTERFACE_USB_DEVICE, i, &deviceInterfaceData); ++i) {
+        DWORD requiredSize = 0;
+        SetupDiGetDeviceInterfaceDetail(deviceInfoSet, &deviceInterfaceData, nullptr, 0, &requiredSize, nullptr);
+
+        std::vector<BYTE> detailDataBuffer(requiredSize);
+        auto pDetailData = reinterpret_cast<PSP_DEVICE_INTERFACE_DETAIL_DATA>(detailDataBuffer.data());
+        pDetailData->cbSize = sizeof(SP_DEVICE_INTERFACE_DETAIL_DATA);
+
+        SP_DEVINFO_DATA devInfoData = {};
+        devInfoData.cbSize = sizeof(SP_DEVINFO_DATA);
+
+        if (!SetupDiGetDeviceInterfaceDetail(deviceInfoSet, &deviceInterfaceData, pDetailData, requiredSize, nullptr, &devInfoData)) {
+            std::cout << "Failed to get device details." << std::endl;
+            continue;
+        }
+
+        wchar_t deviceName[256];
+        if (!SetupDiGetDeviceRegistryProperty(deviceInfoSet, &devInfoData, SPDRP_DEVICEDESC, nullptr, (PBYTE)deviceName, sizeof(deviceName), nullptr)) {
+            wcscpy_s(deviceName, 256, L"<Unknown USB Device>");
+        }
+
+        wchar_t hardwareId[256];
+        if (!SetupDiGetDeviceRegistryProperty(deviceInfoSet, &devInfoData, SPDRP_HARDWAREID, nullptr, (PBYTE)hardwareId, sizeof(hardwareId), nullptr)) {
+            wcscpy_s(hardwareId, L"<Unknown ID>");
+        }
+
+        std::wcout << L" - " << deviceName << L" [" << hardwareId << L"]\n";
+    }
+
+    SetupDiDestroyDeviceInfoList(deviceInfoSet);
 }
 
 void CmdStat(const std::string& args) {
@@ -986,9 +1034,6 @@ void CmdTreeList(const std::string& path) {
 void CmdFirewallStatus(const std::string&) {
     system("netsh advfirewall show allprofiles state");
 }
-
-
-const GUID GUID_DEVCLASS_NET = {0x4d36e972, 0xe325, 0x11ce, {0xbf,0xc1,0x08,0x00,0x2b,0xe1,0x03,0x18}};
 
 std::wstring GetDeviceInstanceIdByName(const std::wstring& deviceName) {
     HDEVINFO hDevInfo = SetupDiGetClassDevsW(&GUID_DEVCLASS_NET, nullptr, nullptr, DIGCF_PRESENT);
@@ -2192,5 +2237,3 @@ void CmdHelp(const std::string&) {
     "| smart               - Display SMART status of disk drives                                        |\n"
     "====================================================================================================\n";
 }
-
-

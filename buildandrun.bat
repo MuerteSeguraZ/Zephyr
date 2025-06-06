@@ -1,14 +1,14 @@
 @echo off
-echo [*] Compiling resource file zephyr.rc...
+echo [*] Compilant el fitxer de recursos zephyr.rc...
 
 windres zephyr.rc -O coff -o zephyr_res.o
 if errorlevel 1 (
-    echo [!] Resource compilation failed.
+    echo [!] Compilació dels recursos fallada.
     pause
     exit /b 1
 )
 
-echo [*] Compiling zephyr.cpp with icon...
+echo [*] Compilant zephyr.cpp amb la icona...
 
 g++ zephyr.cpp zephyr_res.o -o zephyr.exe ^
   -static -static-libgcc -static-libstdc++ ^
@@ -16,13 +16,13 @@ g++ zephyr.cpp zephyr_res.o -o zephyr.exe ^
   -lole32 -lshell32 -luuid -lnetapi32 -lwininet
 
 if errorlevel 1 (
-    echo [!] Compilation failed.
+    echo [!] Compilació fallada.
     pause
     exit /b 1
 )
 
-echo [✓] Compilation succeeded.
-echo [*] Running zephyr.exe as administrator...
+echo [✓] Compilació exitosa.
+echo [*] Executant zephyr.exe com a administrador...
 powershell -Command "Start-Process zephyr.exe -Verb RunAs"
 
 pause
