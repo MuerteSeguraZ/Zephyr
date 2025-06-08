@@ -1,12 +1,21 @@
+#define UNICODE
+#define _UNICODE
 
-#define _WIN32_WINNT 0x0601  
+#define _WIN32_WINNT 0x0601
 
-// Includes (headers, windows)
+// Windows headers (order matters)
 #include <winsock2.h>        
 #include <ws2tcpip.h>        
 #include <iphlpapi.h>        
 #include <icmpapi.h>
 #include <windows.h>  
+#include <wincrypt.h>
+#include <wbemidl.h>
+#include <comdef.h>
+#include <lm.h>
+#undef HLOG  // Remove PDH's HLOG to avoid conflict with lm.h
+#include <pdh.h>
+#include <pdhmsg.h>
 #include <initguid.h>
 #include <devguid.h> 
 #include <shlobj.h>
@@ -17,13 +26,16 @@
 #include <Lmcons.h>
 #include <setupapi.h>
 #include <tlhelp32.h>
+#include <winternl.h>
 #include <psapi.h>
 #include <intrin.h>
 #include <lm.h>
+#include <zlib.h>
 
-// Includes (packets normals (venen amb c++))
+// C++ standard library
 #include <iostream>
 #include <algorithm>
+#include <cctype>
 #include <string>
 #include <sstream>
 #include <unordered_map>
@@ -38,13 +50,18 @@
 #include <cstring>
 #include <iomanip>
 #include <array>
+#include <random>
 #include <regex>
 
+// Link with necessary libraries
 #pragma comment(lib, "iphlpapi.lib")
 #pragma comment(lib, "ws2_32.lib")
 #pragma comment(lib, "setupapi.lib")
 #pragma comment(lib, "cfgmgr32.lib")
 #pragma comment(lib, "Netapi32.lib")
+#pragma comment(lib, "wbemuuid.lib")
+#pragma comment(lib, "ntdll.lib")
+
 
 // Colors
 #define ANSI_BLACK         "\x1b[30m"
@@ -147,6 +164,7 @@ void CmdTreeList(const std::string& args);
 void CmdHop(const std::string& args);
 void CmdSend(const std::string& args);
 void CmdZap(const std::string& args);
+void CmdFZap(const std::string& args);
 void CmdShift(const std::string& args);
 void CmdMkplace(const std::string& args);
 void CmdClear(const std::string& args);
@@ -159,7 +177,9 @@ void CmdRun(const std::string& args);
 void CmdEchoe(const std::string& args);
 void CmdWhereami(const std::string& args);
 void CmdSysinfo(const std::string& args);
+void CmdBattery(const std::string& args);
 void CmdLinkup(const std::string& args);
+void CmdNetworkAdapters(const std::string& args);
 void CmdTouch(const std::string& args);
 void CmdFind(const std::string& args);
 void CmdDate(const std::string& args);
@@ -180,6 +200,8 @@ void CmdCuteMessage(const std::string& args);
 void CmdSmLink(const std::string& args);
 void CmdProcMon(const std::string& args);
 void CmdCpuInfo(const std::string& args);
+void CmdGPUInfo(const std::string& args);
+void CmdBIOSInfo(const std::string& args);
 void CmdUptime(const std::string& args);
 void CmdNetstat(const std::string& args);
 void CmdTempClean(const std::string& args);
@@ -188,55 +210,72 @@ void CmdKillTree(const std::string& args);
 void CmdPingTest(const std::string& args);
 void CmdHttpGet(const std::string& url);
 void CmdHttpPost(const std::string& args);
-void CmdHttpHead(const std::string& args);
+void CmdHttpHeader(const std::string& args);
 void CmdScanWrapper(const std::string& args);
 void CmdCheckAdminWrapper(const std::string& args);
 void CmdListUsersWrapper(const std::string& args);
 void CmdStat(const std::string& args);
+void CmdFMeta(const std::string& args);
 void CmdDnsFlush(const std::string& args);
 void CmdFirewallStatus(const std::string& args);
-void CmdDrives(const std::string& args);
 void CmdSmartStatus(const std::string& args);
+void CmdDrives(const std::string& args);
 void CmdLsusb(const std::string& args);
+void CmdTar(const std::string& args);
+void CmdGzip(const std::string& args);
+void CmdGunzip(const std::string& args);
+void CmdZip(const std::string& args);
+void CmdUnzip(const std::string& args);
+void CmdGrep(const std::string& args);
+void CmdSed(const std::string& args);
+void CmdBasename(const std::string& args);
+void CmdHead(const std::string& args);
+void CmdTail(const std::string& args);
+void CmdWc(const std::string& args);
+void CmdLoadAvg(const std::string& args);
+void CmdWinLoadAvg(const std::string& args);
+void CmdStartupApps(const std::string& args);
+void CmdMounts(const std::string& args);
+bool RunBatchIfExists(const std::string& cmd, const std::string& args);
 void DeleteContents(const fs::path& dir);
 
 std::unordered_map<std::string, std::function<void(const std::string&)>> commands = {
-    {"list", CmdList}, {"tree", CmdTreeList}, {"send", CmdSend}, {"zap", CmdZap}, {"shift", CmdShift},
+    {"list", CmdList}, {"tree", CmdTreeList}, {"send", CmdSend}, {"zap", CmdZap}, {"fzap", CmdFZap}, {"shift", CmdShift},
     {"mkplace", CmdMkplace}, {"clear", CmdClear}, {"bye", CmdBye},
     {"look", CmdLook}, {"read", CmdRead}, {"peek", CmdPeek}, {"write", CmdWrite},
     {"run", CmdRun}, {"echoe", CmdEchoe}, {"whereami", CmdWhereami},
-    {"sysinfo", CmdSysinfo}, {"touch", CmdTouch}, {"find", CmdFind},
+    {"sysinfo", CmdSysinfo}, {"battery", CmdBattery}, {"touch", CmdTouch}, {"find", CmdFind},
     {"date", CmdDate}, {"env", CmdEnv}, {"refreshenv", CmdRefreshEnv},
     {"help", CmdHelp}, {"?", CmdHelp},
     {"rename", CmdRename}, {"radar", CmdRadar}, {"endproc", CmdEndproc}, 
-    {"linkup", CmdLinkup}, {"diskinfo", CmdDiskInfo}, {"du", CmdDU},
-    {"ctitle", CmdSetTitle}, {"sconfig", CmdSconfig}, 
+    {"linkup", CmdLinkup}, {"ntwkadp", CmdNetworkAdapters}, {"diskinfo", CmdDiskInfo}, {"du", CmdDU},
+    {"ctitle", CmdSetTitle}, {"sconfig", CmdSconfig}, {"startupapps", CmdStartupApps}, 
     {"mconfig", CmdMConfig}, {"version", CmdVersion}, {"cutemessage", CmdCuteMessage},
     {"smlink", CmdSmLink}, {"procmon", CmdProcMon}, 
     {"cpuinfo", CmdCpuInfo}, {"uptime", CmdUptime}, {"netstat", CmdNetstat}, {"mirror", CmdMirror}, 
     {"tempclean", CmdTempClean}, {"killtree", CmdKillTree}, {"pingtest", CmdPingTest}, 
-    {"get", CmdHttpGet}, {"post", CmdHttpPost}, {"head", CmdHttpHead}, {"scan", CmdScanWrapper}, {"hop", CmdHop}, {"stat", CmdStat},
+    {"get", CmdHttpGet}, {"post", CmdHttpPost}, {"header", CmdHttpHeader}, {"scan", CmdScanWrapper}, {"hop", CmdHop}, {"stat", CmdStat}, {"fmeta", CmdFMeta},
     {"checkadmin", CmdCheckAdminWrapper}, {"listusers", CmdListUsersWrapper}, {"dnsflush", CmdDnsFlush},
-    {"firewall", CmdFirewallStatus}, {"drives", CmdDrives}, {"smart", CmdSmartStatus}, {"lsusb", CmdLsusb}
+    {"firewall", CmdFirewallStatus}, {"drives", CmdDrives}, {"smart", CmdSmartStatus}, {"lsusb", CmdLsusb},
+    {"tar", CmdTar}, {"gzip", CmdGzip}, {"gunzip", CmdGunzip}, {"zip", CmdZip}, {"unzip", CmdUnzip}, 
+    {"grep", CmdGrep}, {"sed", CmdSed}, {"basename", CmdBasename}, {"head", CmdHead}, {"tail", CmdTail}, {"wc", CmdWc}, {"loadavg", CmdLoadAvg}, {"winloadavg", CmdWinLoadAvg},
+    {"mounts", CmdMounts}, {"gpuinfo", CmdGPUInfo}, {"biosinfo", CmdBIOSInfo}
 };
 
 
+void EnableVirtualTerminalProcessing() {
+    HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
+    if (hOut == INVALID_HANDLE_VALUE) return;
+
+    DWORD dwMode = 0;
+    if (!GetConsoleMode(hOut, &dwMode)) return;
+
+    dwMode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING;
+    SetConsoleMode(hOut, dwMode);
+}
 
 int main() {
-    
-    SetConsoleOutputCP(CP_UTF8);
-
-    WSADATA wsaData;
-    if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
-        std::cerr << "WSAStartup failed\n";
-        return 1;
-    }
-
-    HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
-    DWORD dwMode = 0;
-    if (GetConsoleMode(hOut, &dwMode)) {
-        SetConsoleMode(hOut, dwMode | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
-    }
+    EnableVirtualTerminalProcessing();
 
     while (true) {
         PrintPrompt();
@@ -252,11 +291,16 @@ int main() {
         if (!args.empty() && args[0] == ' ') args.erase(0, 1);
 
         auto it = commands.find(cmd);
-        if (it != commands.end()) it->second(args);
-        else std::cout << "Command " << cmd << " isn't recognized as an internal or external command." << std::endl;
+        if (it != commands.end()) {
+            it->second(args);
+        } else {
+            if (!RunBatchIfExists(cmd, args)) {
+                std::cout << "Command " << cmd << " isn't recognized as an internal or external command." << std::endl;
+            }
+        }
     }
 
-    WSACleanup();  
+    WSACleanup();
     return 0;
 }
 
@@ -325,6 +369,157 @@ void CmdListUsersWrapper(const std::string& args) {
     if (pBuf != nullptr) NetApiBufferFree(pBuf);
 }
 
+void CmdMounts(const std::string&) {
+    HANDLE hFind = FindFirstVolumeA(nullptr, 0);
+    char volumeName[MAX_PATH];
+
+    hFind = FindFirstVolumeA(volumeName, ARRAYSIZE(volumeName));
+    if (hFind == INVALID_HANDLE_VALUE) {
+        std::cerr << "Failed to enumerate volumes.\n";
+        return;
+    }
+
+    std::cout << "\033[1;36mMounted Volumes:\033[0m\n";
+
+    do {
+        // Get associated paths (drive letters or mount points)
+        DWORD charCount = 0;
+        GetVolumePathNamesForVolumeNameA(volumeName, nullptr, 0, &charCount);
+        std::vector<char> names(charCount);
+        if (!GetVolumePathNamesForVolumeNameA(volumeName, names.data(), charCount, &charCount)) {
+            continue;
+        }
+
+        std::string paths;
+        for (DWORD i = 0; i < charCount; ) {
+            std::string path(&names[i]);
+            if (!path.empty()) {
+                if (!paths.empty()) paths += ", ";
+                paths += path;
+            }
+            i += path.length() + 1;
+        }
+        if (paths.empty()) paths = "—";
+
+        // Get volume label, FS, and space info
+        char label[MAX_PATH] = {}, fsName[MAX_PATH] = {};
+        DWORD serialNumber, maxCompLen, fsFlags;
+        GetVolumeInformationA(volumeName, label, MAX_PATH, &serialNumber, &maxCompLen, &fsFlags, fsName, MAX_PATH);
+
+        ULARGE_INTEGER total, free, avail;
+        bool spaceOk = GetDiskFreeSpaceExA(paths != "—" ? paths.c_str() : volumeName, &avail, &total, &free);
+
+        std::cout << "\n\033[1;33m" << volumeName << "\033[0m\n";
+        std::cout << "  Mount Points: " << paths << "\n";
+        std::cout << "  Label: " << (label[0] ? label : "N/A") << "\n";
+        std::cout << "  FS: " << (fsName[0] ? fsName : "N/A");
+
+        if (spaceOk) {
+            double gb = 1024.0 * 1024 * 1024;
+            double used = (total.QuadPart - free.QuadPart) / gb;
+            double size = total.QuadPart / gb;
+            std::cout << ", Used: " << std::fixed << std::setprecision(1) << used << " GB / " << size << " GB";
+        }
+
+        std::cout << "\n";
+
+    } while (FindNextVolumeA(hFind, volumeName, ARRAYSIZE(volumeName)));
+
+    FindVolumeClose(hFind);
+}
+
+void CmdFMeta(const std::string& args) {
+    std::istringstream iss(args);
+    std::string file_path;
+    if (!(iss >> file_path)) {
+        std::cout << "Usage: fmeta <file_path>\n";
+        return;
+    }
+
+    fs::path path(file_path);
+
+    if (!fs::exists(path)) {
+        std::cout << "File does not exist: " << file_path << "\n";
+        return;
+    }
+
+    if (!fs::is_regular_file(path)) {
+        std::cout << "Not a regular file: " << file_path << "\n";
+        return;
+    }
+
+    // Print basic file size
+    std::cout << "File: " << path << "\n";
+    std::cout << "Size: " << fs::file_size(path) << " bytes\n";
+
+    // Print timestamps
+    WIN32_FILE_ATTRIBUTE_DATA fileInfo;
+    if (!GetFileAttributesExA(file_path.c_str(), GetFileExInfoStandard, &fileInfo)) {
+        std::cout << "Failed to get file attributes.\n";
+        return;
+    }
+
+    auto FileTimeToString = [](const FILETIME& ft) -> std::string {
+        SYSTEMTIME stUTC, stLocal;
+        FileTimeToSystemTime(&ft, &stUTC);
+        SystemTimeToTzSpecificLocalTime(NULL, &stUTC, &stLocal);
+        char buffer[64];
+        snprintf(buffer, sizeof(buffer), "%04d-%02d-%02d %02d:%02d:%02d",
+                 stLocal.wYear, stLocal.wMonth, stLocal.wDay,
+                 stLocal.wHour, stLocal.wMinute, stLocal.wSecond);
+        return std::string(buffer);
+    };
+
+    std::cout << "Created:       " << FileTimeToString(fileInfo.ftCreationTime) << "\n";
+    std::cout << "Last Accessed: " << FileTimeToString(fileInfo.ftLastAccessTime) << "\n";
+    std::cout << "Last Modified: " << FileTimeToString(fileInfo.ftLastWriteTime) << "\n";
+
+    // Calculate SHA256 hash
+    HCRYPTPROV hProv = 0;
+    HCRYPTHASH hHash = 0;
+    if (!CryptAcquireContext(&hProv, NULL, NULL, PROV_RSA_AES, CRYPT_VERIFYCONTEXT)) {
+        std::cout << "CryptAcquireContext failed.\n";
+        return;
+    }
+    if (!CryptCreateHash(hProv, CALG_SHA_256, 0, 0, &hHash)) {
+        std::cout << "CryptCreateHash failed.\n";
+        CryptReleaseContext(hProv, 0);
+        return;
+    }
+
+    std::ifstream file(file_path, std::ios::binary);
+    if (!file) {
+        std::cout << "Failed to open file for hashing.\n";
+        CryptDestroyHash(hHash);
+        CryptReleaseContext(hProv, 0);
+        return;
+    }
+
+    char buffer[4096];
+    while (file.read(buffer, sizeof(buffer)) || file.gcount() > 0) {
+        if (!CryptHashData(hHash, reinterpret_cast<BYTE*>(buffer), (DWORD)file.gcount(), 0)) {
+            std::cout << "CryptHashData failed.\n";
+            CryptDestroyHash(hHash);
+            CryptReleaseContext(hProv, 0);
+            return;
+        }
+    }
+
+    BYTE hash[32];
+    DWORD hashLen = 32;
+    if (CryptGetHashParam(hHash, HP_HASHVAL, hash, &hashLen, 0)) {
+        std::cout << "SHA256:        ";
+        for (DWORD i = 0; i < hashLen; ++i)
+            std::cout << std::hex << std::setw(2) << std::setfill('0') << (int)hash[i];
+        std::cout << std::dec << "\n";
+    } else {
+        std::cout << "Failed to get hash value.\n";
+    }
+
+    CryptDestroyHash(hHash);
+    CryptReleaseContext(hProv, 0);
+}
+
 void CmdLsusb(const std::string& args) {
     if (!args.empty()) {
         std::cout << "Usage: lsusb" << std::endl;
@@ -372,6 +567,193 @@ void CmdLsusb(const std::string& args) {
     }
 
     SetupDiDestroyDeviceInfoList(deviceInfoSet);
+}
+
+void CmdWc(const std::string& args) {
+    std::istringstream iss(args);
+    std::string filename;
+    std::vector<std::string> flags;
+
+    std::string token;
+    while (iss >> token) {
+        if (token[0] == '-') {
+            flags.push_back(token);
+        } else {
+            filename = token;
+        }
+    }
+
+    if (filename.empty()) {
+        std::cout << "Usage: wc <file> [-l] [-w] [-c] [-m] [-L]" << std::endl;
+        return;
+    }
+
+    std::ifstream file(filename, std::ios::binary);
+    if (!file) {
+        std::cout << "Cannot open file: " << filename << std::endl;
+        return;
+    }
+
+    size_t lines = 0, words = 0, bytes = 0, chars = 0, maxLineLen = 0;
+    std::string line;
+
+    while (std::getline(file, line)) {
+        ++lines;
+        words += std::count_if(line.begin(), line.end(), [](char c) { return std::isspace(c); }) + 1;
+        chars += line.size();
+        bytes += line.size() + 1; // newline
+        maxLineLen = std::max(maxLineLen, line.size()); 
+    }
+
+    if (flags.empty()) {
+        std::cout << "Lines: " << lines << "\nWords: " << words
+        << "\nBytes: " << bytes << "\nCharacters: " << chars
+        << "\nLongest line: " << maxLineLen << std::endl;
+        return;
+    }
+
+    for (const auto& flag : flags) {
+        if (flag == "-l") std::cout << "Lines: " << lines << std::endl;
+        else if (flag == "-w") std::cout << "Words: " << words << std::endl;
+        else if (flag == "-c") std::cout << "Bytes: " << bytes << std::endl;
+        else if (flag == "-m") std::cout << "Characters: " << chars << std::endl;
+        else if (flag == "-L") std::cout << "Longest line length: " << maxLineLen << std::endl;
+        else std::cout << "Unknown flag: " << flag << std::endl;
+    }
+}
+
+void CmdGzip(const std::string& args) {
+    std::istringstream iss(args);
+    std::string filename;
+    iss >> filename;
+
+    if (filename.empty()) {
+        std::cout << "Usage: gzip <file>" << std::endl;
+        return;
+    }
+
+    std::ifstream inFile(filename, std::ios::binary);
+    if (!inFile) {
+        std::cout << "Cannot open input file: " << filename << std::endl;
+        return;
+    }
+
+    std::string outFilename = filename + ".gz";
+    gzFile outFile = gzopen(outFilename.c_str(), "wb");
+    if (!outFile) {
+        std::cout << "Failed to open output file: " << outFilename << std::endl;
+        return;
+    }
+
+    char buffer[4096];
+    while (inFile.read(buffer, sizeof(buffer)) || inFile.gcount()) {
+        gzwrite(outFile, buffer, static_cast<unsigned int>(inFile.gcount()));
+    }
+
+    inFile.close();
+    gzclose(outFile);
+
+    std::cout << "Compressed \"" << filename << "\" to \"" << outFilename << "\"" << std::endl;
+}
+
+void CmdGunzip(const std::string& args) {
+    std::istringstream iss(args);
+    std::string gzFilename;
+    iss >> gzFilename;
+
+    if (gzFilename.empty()) {
+        std::cout << "Usage: gunzip <file.gz>" << std::endl;
+        return;
+    }
+
+    if (gzFilename.size() < 4 || gzFilename.substr(gzFilename.size() - 3) != ".gz") {
+        std::cout << "Error: Input file must end with .gz" << std::endl;
+        return;
+    }
+
+    std::string outFilename = gzFilename.substr(0, gzFilename.size() - 3);
+
+    gzFile inFile = gzopen(gzFilename.c_str(), "rb");
+    if (!inFile) {
+        std::cout << "Cannot open compressed file: " << gzFilename << std::endl;
+        return;
+    }
+
+    std::ofstream outFile(outFilename, std::ios::binary);
+    if (!outFile) {
+        std::cout << "Failed to create output file: " << outFilename << std::endl;
+        gzclose(inFile);
+        return;
+    }
+
+    char buffer[4096];
+    int bytesRead;
+    while ((bytesRead = gzread(inFile, buffer, sizeof(buffer))) > 0) {
+        outFile.write(buffer, bytesRead);
+    }
+
+    gzclose(inFile);
+    outFile.close();
+
+    std::cout << "Decompressed \"" << gzFilename << "\" to \"" << outFilename << "\"" << std::endl;
+}
+
+void CmdZip(const std::string& args) {
+    std::istringstream iss(args);
+    std::string srcFile, zipFile;
+    iss >> srcFile >> zipFile;
+
+    if (srcFile.empty() || zipFile.empty()) {
+        std::cout << "Usage: zip <sourcefile> <zipfile>" << std::endl;
+        return;
+    }
+
+    if (!std::filesystem::exists(srcFile)) {
+        std::cout << "Error: Source file does not exist." << std::endl;
+        return;
+    }
+
+    // Escape paths with quotes
+    std::string command = "powershell -Command \"Compress-Archive -Path \\\"" + srcFile + "\\\" -DestinationPath \\\"" + zipFile + "\\\" -Force\"";
+
+    int result = std::system(command.c_str());
+
+    if (result == 0) {
+        std::cout << "Zipped \"" << srcFile << "\" to \"" << zipFile << "\"" << std::endl;
+    } else {
+        std::cout << "Error: Failed to zip file with PowerShell." << std::endl;
+    }
+}
+
+void CmdUnzip(const std::string& args) {
+    std::istringstream iss(args);
+    std::string zipFile, outputDir;
+    iss >> zipFile >> outputDir;
+
+    if (zipFile.empty()) {
+        std::cout << "Usage: unzip <zipfile> [output_dir]" << std::endl;
+        return;
+    }
+
+    if (!std::filesystem::exists(zipFile)) {
+        std::cout << "Error: Zip file does not exist." << std::endl;
+        return;
+    }
+
+    if (outputDir.empty()) {
+        outputDir = std::filesystem::current_path().string();
+    }
+
+    // Escape paths with quotes
+    std::string command = "powershell -Command \"Expand-Archive -Path \\\"" + zipFile + "\\\" -DestinationPath \\\"" + outputDir + "\\\" -Force\"";
+
+    int result = std::system(command.c_str());
+
+    if (result == 0) {
+        std::cout << "Unzipped \"" << zipFile << "\" to \"" << outputDir << "\"" << std::endl;
+    } else {
+        std::cout << "Error: Failed to unzip file with PowerShell." << std::endl;
+    }
 }
 
 void CmdStat(const std::string& args) {
@@ -685,7 +1067,7 @@ void CmdHttpPost(const std::string& args) {
     WinHttpCloseHandle(hSession);
 }
 
-void CmdHttpHead(const std::string& args) {
+void CmdHttpHeader(const std::string& args) {
     std::vector<std::string> tokens;
     std::regex re(R"((\"([^\"\\]|\\.)*\"|\S+))");
     auto begin = std::sregex_iterator(args.begin(), args.end(), re);
@@ -710,7 +1092,7 @@ void CmdHttpHead(const std::string& args) {
     }
 
     if (url.empty()) {
-        std::cout << "Error:\nError: Usage: head [-H \"Header\"] <url>\n";
+        std::cout << "Error:\nError: Usage: header [-H \"Header\"] <url>\n";
         return;
     }
 
@@ -1107,12 +1489,8 @@ void CmdMConfig(const std::string& args) {
     }
 }
 
-std::wstring CharToWString(const char* str) {
-    int len = MultiByteToWideChar(CP_ACP, 0, str, -1, nullptr, 0);
-    std::wstring wstr(len, L'\0');
-    MultiByteToWideChar(CP_ACP, 0, str, -1, &wstr[0], len);
-    wstr.pop_back(); 
-    return wstr;
+std::wstring WCharToWString(const wchar_t* wstr) {
+    return std::wstring(wstr ? wstr : L"");
 }
 
 struct ProcInfo {
@@ -1130,10 +1508,10 @@ void CmdProcMon(const std::string&) {
         return;
     }
 
-    PROCESSENTRY32 pe;
-    pe.dwSize = sizeof(PROCESSENTRY32);
+    PROCESSENTRY32W pe;
+    pe.dwSize = sizeof(PROCESSENTRY32W);
 
-    if (!Process32First(snapshot, &pe)) {
+    if (!Process32FirstW(snapshot, &pe)) {
         std::cerr << "[procmon] Failed to retrieve first process.\n";
         CloseHandle(snapshot);
         return;
@@ -1147,20 +1525,18 @@ void CmdProcMon(const std::string&) {
         if (hProc) {
             PROCESS_MEMORY_COUNTERS pmc;
             if (GetProcessMemoryInfo(hProc, &pmc, sizeof(pmc))) {
-                memUsage = pmc.WorkingSetSize / (1024 * 1024); 
+                memUsage = pmc.WorkingSetSize / (1024 * 1024); // Convert to MB
             }
             CloseHandle(hProc);
         }
 
         ProcInfo info;
         info.pid = pid;
-        info.name = CharToWString(pe.szExeFile);  
+        info.name = WCharToWString(pe.szExeFile); // Safe conversion
         info.memMB = memUsage;
         processes.push_back(info);
 
-
-
-    } while (Process32Next(snapshot, &pe));
+    } while (Process32NextW(snapshot, &pe));
 
     CloseHandle(snapshot);
 
@@ -1186,9 +1562,14 @@ void CmdProcMon(const std::string&) {
     }
 }
 
+void PrintFeature(const std::string& name, bool supported) {
+    std::cout << "  " << std::left << std::setw(10) << name << ": ";
+    std::cout << (supported ? ANSI_BOLD_GREEN "Yes" ANSI_RESET : ANSI_BOLD_RED "No" ANSI_RESET) << std::endl;
+}
+
 void CmdCpuInfo(const std::string& args) {
     if (!args.empty()) {
-        std::cout << "Usage: cpuspeed" << std::endl;
+        std::cout << ANSI_BOLD_RED "Usage: cpuspeed" ANSI_RESET << std::endl;
         return;
     }
 
@@ -1238,31 +1619,87 @@ void CmdCpuInfo(const std::string& args) {
         RegCloseKey(hKey);
     }
 
+    int cpuInfo[4] = {};
     char brand[0x40] = {};
-    __cpuid(reinterpret_cast<int*>(brand), 0x80000002);
-    __cpuid(reinterpret_cast<int*>(brand + 16), 0x80000003);
-    __cpuid(reinterpret_cast<int*>(brand + 32), 0x80000004);
+    __cpuid(cpuInfo, 0x80000002);
+    memcpy(brand, cpuInfo, sizeof(cpuInfo));
+    __cpuid(cpuInfo, 0x80000003);
+    memcpy(brand + 16, cpuInfo, sizeof(cpuInfo));
+    __cpuid(cpuInfo, 0x80000004);
+    memcpy(brand + 32, cpuInfo, sizeof(cpuInfo));
 
-    std::cout << "==================== CPU Information ====================" << std::endl;
+    int vendor[4] = {};
+    __cpuid(vendor, 0);
+    char vendorId[13] = {};
+    *reinterpret_cast<int*>(vendorId) = vendor[1];      // EBX
+    *reinterpret_cast<int*>(vendorId + 4) = vendor[3];  // EDX
+    *reinterpret_cast<int*>(vendorId + 8) = vendor[2];  // ECX
+
+    __cpuid(cpuInfo, 1);
+    int family = ((cpuInfo[0] >> 8) & 0xf) + ((cpuInfo[0] >> 20) & 0xff);
+    int model = ((cpuInfo[0] >> 4) & 0xf) + (((cpuInfo[0] >> 16) & 0xf) << 4);
+    int stepping = cpuInfo[0] & 0xf;
+
+    std::cout << ANSI_BOLD_CYAN "==================== CPU Information ====================" ANSI_RESET << std::endl;
     std::cout << "CPU Name: " << brand << std::endl;
+    std::cout << "Vendor ID: " << vendorId << std::endl;
+    std::cout << "Family: " << family << ", Model: " << model << ", Stepping: " << stepping << std::endl;
 
     std::cout << "Architecture: ";
     switch (sysInfo.wProcessorArchitecture) {
-        case PROCESSOR_ARCHITECTURE_AMD64: std::cout << "x64 (AMD or Intel)" << std::endl; break;
-        case PROCESSOR_ARCHITECTURE_ARM: std::cout << "ARM" << std::endl; break;
-        case PROCESSOR_ARCHITECTURE_IA64: std::cout << "Intel Itanium" << std::endl; break;
-        case PROCESSOR_ARCHITECTURE_INTEL: std::cout << "x86" << std::endl; break;
-        default: std::cout << "Unknown" << std::endl; break;
+        case PROCESSOR_ARCHITECTURE_AMD64: std::cout << "x64 (AMD or Intel)"; break;
+        case PROCESSOR_ARCHITECTURE_ARM: std::cout << "ARM"; break;
+        case PROCESSOR_ARCHITECTURE_IA64: std::cout << "Intel Itanium"; break;
+        case PROCESSOR_ARCHITECTURE_INTEL: std::cout << "x86"; break;
+        default: std::cout << "Unknown"; break;
     }
+    std::cout << std::endl;
 
+    std::cout << "Hyper-Threading: " << ((cpuInfo[3] & (1 << 28)) ? "Supported" : "Not Supported") << std::endl;
     std::cout << "CPU Frequency: " << (freq ? std::to_string(freq) + " MHz" : "Unknown") << std::endl;
+    std::cout << "NUMA Nodes: " << sysInfo.dwNumberOfProcessors << std::endl;
+    std::cout << "Page Size: " << sysInfo.dwPageSize << " bytes" << std::endl;
+    std::cout << "Active Processor Mask: 0x" << std::hex << sysInfo.dwActiveProcessorMask << std::dec << std::endl;
     std::cout << "Physical cores: " << physicalCoreCount << std::endl;
     std::cout << "Logical processors: " << logicalCount << std::endl;
-    std::cout << "Cache Sizes:" << std::endl;
+
+    std::cout << ANSI_BOLD_MAGENTA "Cache Sizes:" ANSI_RESET << std::endl;
     std::cout << "  L1 Cache: " << (L1 ? std::to_string(L1 / 1024) + " KB" : "Unknown") << std::endl;
     std::cout << "  L2 Cache: " << (L2 ? std::to_string(L2 / 1024) + " KB" : "Unknown") << std::endl;
     std::cout << "  L3 Cache: " << (L3 ? std::to_string(L3 / 1024) + " KB" : "Unknown") << std::endl;
-    std::cout << "=========================================================" << std::endl;
+
+    // Feature Detection
+    std::cout << ANSI_BOLD_CYAN "\nSupported Instruction Sets:\n" ANSI_RESET;
+
+    bool sse41 = (cpuInfo[2] & (1 << 19));
+    bool sse42 = (cpuInfo[2] & (1 << 20));
+    bool avx   = (cpuInfo[2] & (1 << 28));
+    bool fma   = (cpuInfo[2] & (1 << 12));
+    bool aes   = (cpuInfo[2] & (1 << 25));
+    bool rdrand = (cpuInfo[2] & (1 << 30));
+
+    __cpuid(cpuInfo, 7);
+    bool avx2  = (cpuInfo[1] & (1 << 5));
+    bool bmi1  = (cpuInfo[1] & (1 << 3));
+    bool bmi2  = (cpuInfo[1] & (1 << 8));
+    bool avx512f = (cpuInfo[1] & (1 << 16));
+    bool sha   = (cpuInfo[1] & (1 << 29));
+    bool sgx   = (cpuInfo[1] & (1 << 2));
+
+    PrintFeature("SSE4.1", sse41);
+    PrintFeature("SSE4.2", sse42);
+    PrintFeature("AVX",    avx);
+    PrintFeature("AVX2",   avx2);
+    PrintFeature("AVX-512", avx512f);
+    PrintFeature("FMA",    fma);
+    PrintFeature("BMI1",   bmi1);
+    PrintFeature("BMI2",   bmi2);
+    PrintFeature("AES-NI", aes);
+    PrintFeature("RDRAND", rdrand);
+    PrintFeature("SHA",    sha);
+    PrintFeature("SGX",    sgx);
+
+    std::cout << ANSI_BOLD_CYAN "=========================================================" ANSI_RESET << std::endl;
 }
 
 
@@ -1364,6 +1801,135 @@ void CmdZap(const std::string& args) {
         std::cout << "Failed to delete file. Error code: " << GetLastError() << std::endl;
 }
 
+void SecureOverwriteFile(const std::string& filename, int passes, bool useRandom)
+{
+    HANDLE hFile = CreateFileA(filename.c_str(),
+        GENERIC_READ | GENERIC_WRITE,
+        0, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+
+    if (hFile == INVALID_HANDLE_VALUE)
+    {
+        std::cerr << "Error: Cannot open file for wiping: " << filename << "\n";
+        return;
+    }
+
+    LARGE_INTEGER filesize;
+    if (!GetFileSizeEx(hFile, &filesize))
+    {
+        std::cerr << "Error: Cannot get file size: " << filename << "\n";
+        CloseHandle(hFile);
+        return;
+    }
+
+    std::cout << "Wiping file: " << filename << " (" << filesize.QuadPart << " bytes), Passes: " << passes << "\n";
+
+    const size_t bufSize = 64 * 1024;
+    std::vector<char> buffer(bufSize);
+
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_int_distribution<> dis(0, 255);
+
+    for (int pass = 1; pass <= passes; ++pass)
+    {
+        std::cout << "Pass " << pass << " of " << passes << "...\n";
+        LARGE_INTEGER pos; pos.QuadPart = 0;
+        if (!SetFilePointerEx(hFile, pos, nullptr, FILE_BEGIN))
+        {
+            std::cerr << "Error: Failed to seek start of file\n";
+            CloseHandle(hFile);
+            return;
+        }
+
+        LONGLONG bytesLeft = filesize.QuadPart;
+        while (bytesLeft > 0)
+        {
+            size_t chunk = (bytesLeft > (LONGLONG)bufSize) ? bufSize : (size_t)bytesLeft;
+
+            if (useRandom)
+            {
+                for (size_t i = 0; i < chunk; ++i)
+                    buffer[i] = (char)dis(gen);
+            }
+            else
+            {
+                memset(buffer.data(), 0, chunk);
+            }
+
+            DWORD written = 0;
+            if (!WriteFile(hFile, buffer.data(), (DWORD)chunk, &written, nullptr) || written != chunk)
+            {
+                std::cerr << "Error: Write failed during wiping\n";
+                CloseHandle(hFile);
+                return;
+            }
+
+            bytesLeft -= chunk;
+        }
+
+        FlushFileBuffers(hFile);
+    }
+
+    CloseHandle(hFile);
+
+    if (DeleteFileA(filename.c_str()))
+    {
+        std::cout << "File securely wiped and deleted successfully.\n";
+    }
+    else
+    {
+        std::cerr << "Error: Could not delete the file after wiping.\n";
+    }
+}
+
+void CmdFZap(const std::string& args)
+{
+    // Parse arguments from args string: filename [passes] [zero|random]
+    std::istringstream iss(args);
+    std::vector<std::string> tokens;
+    for (std::string token; iss >> token;)
+        tokens.push_back(token);
+
+    if (tokens.empty())
+    {
+        std::cout << "Usage: fzap <filename> [passes] [zero|random]\n";
+        return;
+    }
+
+    std::string filename = tokens[0];
+    int passes = 3;  // default passes
+    bool useRandom = false; // default overwrite with zeros
+
+    if (tokens.size() > 1)
+    {
+        try
+        {
+            passes = std::stoi(tokens[1]);
+            if (passes < 1) passes = 1;
+            if (passes > 10) passes = 10; // limit max passes for sanity
+        }
+        catch (...)
+        {
+            std::cout << "Invalid number of passes, using default 3.\n";
+            passes = 3;
+        }
+    }
+
+    if (tokens.size() > 2)
+    {
+        std::string mode = tokens[2];
+        for (auto& c : mode) c = (char)tolower(c);
+        if (mode == "random")
+            useRandom = true;
+        else if (mode == "zero")
+            useRandom = false;
+        else
+            std::cout << "Unknown mode '" << tokens[2] << "'. Use 'zero' or 'random'. Defaulting to zero.\n";
+    }
+
+    SecureOverwriteFile(filename, passes, useRandom);
+}
+
 void CmdShift(const std::string& args) {
     std::istringstream iss(args);
     std::string src, dst;
@@ -1390,6 +1956,8 @@ void ExecuteCommand(const std::string& input) {
     } else {
         std::cout << "Unknown command: " << cmd << std::endl;
     }
+
+    RunBatchIfExists(cmd, args);
 }
 
 void CmdMkplace(const std::string& args) {
@@ -1484,6 +2052,7 @@ void CmdRadar(const std::string& args) {
         std::cout << "Not found: " << target << " in " << start_folder << "\n";
     }
 }
+
 
 void CmdClear(const std::string&) {
     system("cls");
@@ -1648,7 +2217,721 @@ void CmdSysinfo(const std::string&) {
     }
 
     std::cout << colorLabel << "Memory load: " << memColor << memLoad << "%" << colorReset << std::endl;
+
+    // --- Begin CPU Temperature query via WMI ---
+
+    HRESULT hres;
+
+    // Initialize COM.
+    hres = CoInitializeEx(0, COINIT_MULTITHREADED);
+    if (FAILED(hres)) {
+        std::cout << colorLabel << "Failed to initialize COM library." << colorReset << std::endl;
+        return;
+    }
+
+    // Initialize security.
+    hres = CoInitializeSecurity(
+        NULL, 
+        -1,                          // COM negotiates service
+        NULL,                        // Authentication services
+        NULL,                        // Reserved
+        RPC_C_AUTHN_LEVEL_DEFAULT,   // Default authentication 
+        RPC_C_IMP_LEVEL_IMPERSONATE, // Default Impersonation  
+        NULL,                        // Authentication info
+        EOAC_NONE,                   // Additional capabilities 
+        NULL                         // Reserved
+    );
+
+    if (FAILED(hres)) {
+        std::cout << colorLabel << "Failed to initialize COM security." << colorReset << std::endl;
+        CoUninitialize();
+        return;
+    }
+
+    IWbemLocator *pLoc = NULL;
+
+    // Obtain the initial locator to WMI 
+    hres = CoCreateInstance(
+        CLSID_WbemLocator,             
+        0, 
+        CLSCTX_INPROC_SERVER, 
+        IID_IWbemLocator, (LPVOID *) &pLoc);
+
+    if (FAILED(hres)) {
+        std::cout << colorLabel << "Failed to create IWbemLocator object." << colorReset << std::endl;
+        CoUninitialize();
+        return;
+    }
+
+    IWbemServices *pSvc = NULL;
+
+    // Create BSTRs manually instead of _bstr_t
+    BSTR bstrNamespace = SysAllocString(L"ROOT\\CIMV2");
+    if (!bstrNamespace) {
+        std::cout << colorLabel << "Failed to allocate BSTR for namespace." << colorReset << std::endl;
+        pLoc->Release();
+        CoUninitialize();
+        return;
+    }
+
+    // Connect to WMI through the IWbemLocator::ConnectServer method
+    hres = pLoc->ConnectServer(
+        bstrNamespace, // WMI namespace
+        NULL,          // User name
+        NULL,          // User password
+        NULL,          // Locale 
+        0,             // Security flags
+        NULL,          // Authority
+        NULL,          // Context object
+        &pSvc          // IWbemServices proxy
+    );
+
+    SysFreeString(bstrNamespace);
+
+    if (FAILED(hres)) {
+        std::cout << colorLabel << "Could not connect to WMI namespace ROOT\\CIMV2." << colorReset << std::endl;
+        pLoc->Release();
+        CoUninitialize();
+        return;
+    }
+
+    // Set security levels on the proxy
+    hres = CoSetProxyBlanket(
+        pSvc,                        // Indicates the proxy to set
+        RPC_C_AUTHN_WINNT,           // RPC_C_AUTHN_xxx 
+        RPC_C_AUTHZ_NONE,            // RPC_C_AUTHZ_xxx 
+        NULL,                        // Server principal name 
+        RPC_C_AUTHN_LEVEL_CALL,      // RPC_C_AUTHN_LEVEL_xxx 
+        RPC_C_IMP_LEVEL_IMPERSONATE, // RPC_C_IMP_LEVEL_xxx
+        NULL,                        // client identity
+        EOAC_NONE                    // proxy capabilities 
+    );
+
+    if (FAILED(hres)) {
+        std::cout << colorLabel << "Could not set proxy blanket." << colorReset << std::endl;
+        pSvc->Release();
+        pLoc->Release();
+        CoUninitialize();
+        return;
+    }
+
+    IEnumWbemClassObject* pEnumerator = NULL;
+
+    // Manually allocate BSTRs for query strings
+    BSTR bstrQueryLanguage = SysAllocString(L"WQL");
+    BSTR bstrQuery = SysAllocString(L"SELECT CurrentTemperature FROM MSAcpi_ThermalZoneTemperature");
+
+
+    if (!bstrQueryLanguage || !bstrQuery) {
+        std::cout << colorLabel << "Failed to allocate BSTR for WMI query." << colorReset << std::endl;
+        if (bstrQueryLanguage) SysFreeString(bstrQueryLanguage);
+        if (bstrQuery) SysFreeString(bstrQuery);
+        pSvc->Release();
+        pLoc->Release();
+        CoUninitialize();
+        return;
+    }
+
+    // Query temperature sensors
+    hres = pSvc->ExecQuery(
+        bstrQueryLanguage,
+        bstrQuery,
+        WBEM_FLAG_FORWARD_ONLY | WBEM_FLAG_RETURN_IMMEDIATELY, 
+        NULL,
+        &pEnumerator);
+
+    SysFreeString(bstrQueryLanguage);
+    SysFreeString(bstrQuery);
+
+    if (FAILED(hres)) {
+        std::cout << colorLabel << "WMI query for CPU temperature failed." << colorReset << std::endl;
+        pSvc->Release();
+        pLoc->Release();
+        CoUninitialize();
+        return;
+    }
+
+    IWbemClassObject *pclsObj = NULL;
+    ULONG uReturn = 0;
+
+    bool temperatureFound = false;
+
+    while (pEnumerator) {
+        HRESULT hr = pEnumerator->Next(WBEM_INFINITE, 1, &pclsObj, &uReturn);
+        if (0 == uReturn) {
+            break;
+        }
+
+        VARIANT vtProp;
+
+        hr = pclsObj->Get(L"CurrentTemperature", 0, &vtProp, 0, 0);
+        if (SUCCEEDED(hr) && (vtProp.vt == VT_I4)) {
+            // Temperature in tenths of degrees Kelvin
+            int tempKelvinTenths = vtProp.intVal;
+            if (tempKelvinTenths > 0) {
+                // Convert tenths Kelvin to Celsius
+                double tempCelsius = (tempKelvinTenths / 10.0) - 273.15;
+                std::cout << colorLabel << "CPU temperature: " << colorValue 
+                          << std::fixed << std::setprecision(1) << tempCelsius << " °C" << colorReset << std::endl;
+                temperatureFound = true;
+            }
+        }
+        VariantClear(&vtProp);
+        pclsObj->Release();
+    }
+
+    if (!temperatureFound) {
+        std::cout << colorLabel << "CPU temperature: " << colorValue << "Not available" << colorReset << std::endl;
+    }
+
+    pEnumerator->Release();
+    pSvc->Release();
+    pLoc->Release();
+    CoUninitialize();
 }
+
+bool InitializeCOM() {
+    HRESULT hr = CoInitializeEx(0, COINIT_MULTITHREADED);
+    if (FAILED(hr)) return false;
+
+    hr = CoInitializeSecurity(
+        NULL, -1, NULL, NULL,
+        RPC_C_AUTHN_LEVEL_DEFAULT,
+        RPC_C_IMP_LEVEL_IMPERSONATE,
+        NULL, EOAC_NONE, NULL
+    );
+    return SUCCEEDED(hr);
+}
+
+const wchar_t* DecodeVideoArchitecture(int val) {
+    switch (val) {
+        case 0:  return L"Other";
+        case 1:  return L"Unknown";
+        case 2:  return L"CGA";
+        case 3:  return L"EGA";
+        case 4:  return L"VGA";
+        case 5:  return L"SVGA";
+        case 6:  return L"MDA";
+        case 7:  return L"HGC";
+        case 8:  return L"MCGA";
+        case 9:  return L"PCI";
+        case 10: return L"AGP";
+        case 11: return L"Memory Mapped I/O";
+        case 12: return L"BIOS";
+        case 13: return L"ISA";
+        case 14: return L"MCA";
+        default: return L"(unknown)";
+    }
+}
+
+std::wstring FormatDriverDate(const std::wstring& wmiDate) {
+    if (wmiDate.length() < 8) return L"(invalid date)";
+    std::wstring year = wmiDate.substr(0, 4);
+    std::wstring month = wmiDate.substr(4, 2);
+    std::wstring day = wmiDate.substr(6, 2);
+    return year + L"-" + month + L"-" + day;
+}
+
+void CmdGPUInfo(const std::string& args) {
+    if (!InitializeCOM()) {
+        std::cerr << "Failed to initialize COM.\n";
+        return;
+    }
+
+    IWbemLocator *locator = nullptr;
+    IWbemServices *services = nullptr;
+
+    HRESULT hr = CoCreateInstance(CLSID_WbemLocator, 0, CLSCTX_INPROC_SERVER,
+                                  IID_IWbemLocator, (LPVOID*)&locator);
+
+    if (FAILED(hr)) {
+        std::cerr << "Failed to create IWbemLocator.\n";
+        return;
+    }
+
+    BSTR namespaceStr = SysAllocString(L"ROOT\\CIMV2");
+    hr = locator->ConnectServer(
+        namespaceStr,
+        nullptr,
+        nullptr,
+        nullptr,
+        0,
+        nullptr,
+        nullptr,
+        &services
+    );
+    SysFreeString(namespaceStr);
+
+    if (FAILED(hr)) {
+        std::cerr << "Failed to connect to WMI.\n";
+        locator->Release();
+        return;
+    }
+
+    BSTR wql = SysAllocString(L"WQL");
+    BSTR query = SysAllocString(L"SELECT Name, DriverVersion, AdapterRAM, VideoProcessor, VideoModeDescription, Status, DriverDate, VideoArchitecture FROM Win32_VideoController");
+
+    IEnumWbemClassObject* enumerator = nullptr;
+    hr = services->ExecQuery(
+        wql,
+        query,
+        WBEM_FLAG_FORWARD_ONLY | WBEM_FLAG_RETURN_IMMEDIATELY,
+        nullptr,
+        &enumerator
+    );
+
+    SysFreeString(wql);
+    SysFreeString(query);
+
+    if (FAILED(hr)) {
+        std::cerr << "WMI GPU query failed.\n";
+        services->Release();
+        locator->Release();
+        return;
+    }
+
+    IWbemClassObject *obj = nullptr;
+    ULONG returned = 0;
+
+    while (enumerator) {
+        HRESULT hr = enumerator->Next(WBEM_INFINITE, 1, &obj, &returned);
+        if (!returned) break;
+
+        VARIANT name, version, ram;
+        VARIANT processor, modeDesc, status, driverDate, videoArch;
+        VariantInit(&name);
+        VariantInit(&version);
+        VariantInit(&ram);
+        VariantInit(&processor);
+        VariantInit(&modeDesc);
+        VariantInit(&status);
+        VariantInit(&driverDate);
+        VariantInit(&videoArch);
+
+        obj->Get(L"Name", 0, &name, 0, 0);
+        obj->Get(L"DriverVersion", 0, &version, 0, 0);
+        obj->Get(L"AdapterRAM", 0, &ram, 0, 0);
+        obj->Get(L"VideoProcessor", 0, &processor, 0, 0);
+        obj->Get(L"VideoModeDescription", 0, &modeDesc, 0, 0);
+        obj->Get(L"Status", 0, &status, 0, 0);
+        obj->Get(L"DriverDate", 0, &driverDate, 0, 0);
+        obj->Get(L"VideoArchitecture", 0, &videoArch, 0, 0);
+
+        ULONGLONG vram = 0;
+        if (ram.vt == VT_UI4) {
+            vram = ram.ulVal;
+        } else if (ram.vt == VT_I8) {
+            vram = ram.llVal;
+        } else if (ram.vt == VT_UI8) {
+            vram = ram.ullVal;
+        }
+
+        std::wcout << L"\nGPU Name            : " << (name.vt == VT_BSTR ? name.bstrVal : L"(unknown)") << L"\n"
+                   << L"Driver Version      : " << (version.vt == VT_BSTR ? version.bstrVal : L"(unknown)") << L"\n"
+                   << L"VRAM (bytes)        : " << vram << L"\n"
+                   << L"Video Processor     : " << (processor.vt == VT_BSTR ? processor.bstrVal : L"(unknown)") << L"\n"
+                   << L"Video Mode          : " << (modeDesc.vt == VT_BSTR ? modeDesc.bstrVal : L"(unknown)") << L"\n"
+                   << L"Status              : " << (status.vt == VT_BSTR ? status.bstrVal : L"(unknown)") << L"\n";
+
+        if (driverDate.vt == VT_BSTR) {
+            std::wstring formattedDate = FormatDriverDate(driverDate.bstrVal);
+            std::wcout << L"Driver Date         : " << formattedDate << L"\n";
+        } else {
+            std::wcout << L"Driver Date         : (unknown)\n";
+        }
+
+        std::wcout << L"Video Architecture  : "
+                   << (videoArch.vt == VT_I4 ? DecodeVideoArchitecture(videoArch.intVal) : L"(unknown)") << L"\n";
+
+        VariantClear(&name);
+        VariantClear(&version);
+        VariantClear(&ram);
+        VariantClear(&processor);
+        VariantClear(&modeDesc);
+        VariantClear(&status);
+        VariantClear(&driverDate);
+        VariantClear(&videoArch);
+        obj->Release();
+    }
+
+    enumerator->Release();
+    services->Release();
+    locator->Release();
+    CoUninitialize();
+}
+
+void CmdBIOSInfo(const std::string& args) {
+    if (!InitializeCOM()) {
+        std::cerr << "Failed to initialize COM.\n";
+        return;
+    }
+
+    IWbemLocator *locator = nullptr;
+    IWbemServices *services = nullptr;
+
+    HRESULT hr = CoCreateInstance(CLSID_WbemLocator, 0, CLSCTX_INPROC_SERVER,
+                                  IID_IWbemLocator, (LPVOID*)&locator);
+
+    if (FAILED(hr)) {
+        std::cerr << "Failed to create IWbemLocator.\n";
+        return;
+    }
+
+    BSTR namespaceStr = SysAllocString(L"ROOT\\CIMV2");
+    hr = locator->ConnectServer(
+        namespaceStr,
+        nullptr,
+        nullptr,
+        nullptr,
+        0,
+        nullptr,
+        nullptr,
+        &services
+    );
+    SysFreeString(namespaceStr);
+
+    if (FAILED(hr)) {
+        std::cerr << "Failed to connect to WMI.\n";
+        locator->Release();
+        return;
+    }
+
+    BSTR wql = SysAllocString(L"WQL");
+    BSTR query = SysAllocString(L"SELECT Manufacturer, SMBIOSBIOSVersion, ReleaseDate FROM Win32_BIOS");
+
+    IEnumWbemClassObject* enumerator = nullptr;
+    hr = services->ExecQuery(
+        wql,
+        query,
+        WBEM_FLAG_FORWARD_ONLY | WBEM_FLAG_RETURN_IMMEDIATELY,
+        nullptr,
+        &enumerator
+    );
+
+    SysFreeString(wql);
+    SysFreeString(query);
+
+    if (FAILED(hr)) {
+        std::cerr << "WMI BIOS query failed.\n";
+        services->Release();
+        locator->Release();
+        return;
+    }
+
+    IWbemClassObject *obj = nullptr;
+    ULONG returned = 0;
+
+    while (enumerator) {
+        HRESULT hr = enumerator->Next(WBEM_INFINITE, 1, &obj, &returned);
+        if (!returned) break;
+
+        VARIANT manuf, version, date;
+        VariantInit(&manuf);
+        VariantInit(&version);
+        VariantInit(&date);
+
+        obj->Get(L"Manufacturer", 0, &manuf, 0, 0);
+        obj->Get(L"SMBIOSBIOSVersion", 0, &version, 0, 0);
+        obj->Get(L"ReleaseDate", 0, &date, 0, 0);
+
+        std::wstring releaseDateStr = L"(unknown)";
+        if (date.vt == VT_BSTR && wcslen(date.bstrVal) >= 8) {
+            std::wstring raw(date.bstrVal);
+            releaseDateStr = raw.substr(0, 4) + L"-" + raw.substr(4, 2) + L"-" + raw.substr(6, 2);
+        }
+
+        std::wcout << L"\nBIOS Manufacturer : " << (manuf.vt == VT_BSTR ? manuf.bstrVal : L"(unknown)") << L"\n"
+                   << L"BIOS Version      : " << (version.vt == VT_BSTR ? version.bstrVal : L"(unknown)") << L"\n"
+                   << L"Release Date      : " << releaseDateStr << L"\n";
+
+        VariantClear(&manuf);
+        VariantClear(&version);
+        VariantClear(&date);
+        obj->Release();
+    }
+
+    enumerator->Release();
+    services->Release();
+    locator->Release();
+    CoUninitialize();
+}
+
+void CmdNetworkAdapters(const std::string& args) {
+    if (!InitializeCOM()) {
+        std::cerr << "Failed to initialize COM.\n";
+        return;
+    }
+
+    IWbemLocator* locator = nullptr;
+    IWbemServices* services = nullptr;
+
+    HRESULT hr = CoCreateInstance(CLSID_WbemLocator, 0, CLSCTX_INPROC_SERVER,
+                                  IID_IWbemLocator, (LPVOID*)&locator);
+
+    if (FAILED(hr)) {
+        std::cerr << "Failed to create IWbemLocator.\n";
+        return;
+    }
+
+    BSTR namespaceStr = SysAllocString(L"ROOT\\CIMV2");
+    hr = locator->ConnectServer(
+        namespaceStr,
+        nullptr,
+        nullptr,
+        nullptr,
+        0,
+        nullptr,
+        nullptr,
+        &services
+    );
+    SysFreeString(namespaceStr);
+
+    if (FAILED(hr)) {
+        std::cerr << "Failed to connect to WMI.\n";
+        locator->Release();
+        return;
+    }
+
+    BSTR wql = SysAllocString(L"WQL");
+
+    // Convert args (adapter name) from std::string to std::wstring
+    std::wstring wArgs;
+    if (!args.empty()) {
+        int size_needed = MultiByteToWideChar(CP_UTF8, 0, args.c_str(), (int)args.size(), NULL, 0);
+        wArgs.resize(size_needed);
+        MultiByteToWideChar(CP_UTF8, 0, args.c_str(), (int)args.size(), &wArgs[0], size_needed);
+
+        // Escape single quotes for WQL (replace ' with '')
+        size_t pos = 0;
+        while ((pos = wArgs.find(L'\'', pos)) != std::wstring::npos) {
+            wArgs.replace(pos, 1, L"''");
+            pos += 2;
+        }
+    }
+
+    // Compose query string:
+    std::wstring queryStr = L"SELECT Name, Description, MACAddress, Manufacturer, NetConnectionStatus, Speed, AdapterType, DeviceID, PNPDeviceID, ServiceName FROM Win32_NetworkAdapter";
+    if (!wArgs.empty()) {
+        queryStr += L" WHERE Name = '" + wArgs + L"'";
+    }
+
+    BSTR query = SysAllocString(queryStr.c_str());
+
+    IEnumWbemClassObject* enumerator = nullptr;
+    hr = services->ExecQuery(
+        wql,
+        query,
+        WBEM_FLAG_FORWARD_ONLY | WBEM_FLAG_RETURN_IMMEDIATELY,
+        nullptr,
+        &enumerator
+    );
+
+    SysFreeString(wql);
+    SysFreeString(query);
+
+    if (FAILED(hr)) {
+        std::cerr << "WMI NetworkAdapter query failed.\n";
+        services->Release();
+        locator->Release();
+        return;
+    }
+
+    auto printSpeed = [](VARIANT& speed) {
+        if (speed.vt == VT_BSTR) {
+            try {
+                ULONGLONG spd = _wtoi64(speed.bstrVal);
+                if (spd > 0 && spd < 1'000'000'000'000ULL)
+                    std::wcout << L"Speed            : " << spd / 1000000 << L" Mbps\n";
+                else
+                    std::wcout << L"Speed            : (invalid)\n";
+            } catch (...) {
+                std::wcout << L"Speed            : (invalid)\n";
+            }
+        } else if (speed.vt == VT_UI8) {
+            if (speed.ullVal > 0 && speed.ullVal < 1'000'000'000'000ULL)
+                std::wcout << L"Speed            : " << speed.ullVal / 1000000 << L" Mbps\n";
+            else
+                std::wcout << L"Speed            : (invalid)\n";
+        } else if (speed.vt == VT_I4) {
+            if (speed.intVal > 0 && speed.intVal < 1'000'000'000)
+                std::wcout << L"Speed            : " << speed.intVal / 1000000 << L" Mbps\n";
+            else
+                std::wcout << L"Speed            : (invalid)\n";
+        } else {
+            std::wcout << L"Speed            : (unknown)\n";
+        }
+    };
+
+    IWbemClassObject* obj = nullptr;
+    ULONG returned = 0;
+
+    bool foundAny = false;
+
+    while (enumerator) {
+        HRESULT hr = enumerator->Next(WBEM_INFINITE, 1, &obj, &returned);
+        if (!returned) break;
+
+        foundAny = true;
+
+        VARIANT name, description, mac, manufacturer, status, speed, adapterType, deviceId, pnpId, serviceName;
+        VariantInit(&name);
+        VariantInit(&description);
+        VariantInit(&mac);
+        VariantInit(&manufacturer);
+        VariantInit(&status);
+        VariantInit(&speed);
+        VariantInit(&adapterType);
+        VariantInit(&deviceId);
+        VariantInit(&pnpId);
+        VariantInit(&serviceName);
+
+        obj->Get(L"Name", 0, &name, 0, 0);
+        obj->Get(L"Description", 0, &description, 0, 0);
+        obj->Get(L"MACAddress", 0, &mac, 0, 0);
+        obj->Get(L"Manufacturer", 0, &manufacturer, 0, 0);
+        obj->Get(L"NetConnectionStatus", 0, &status, 0, 0);
+        obj->Get(L"Speed", 0, &speed, 0, 0);
+        obj->Get(L"AdapterType", 0, &adapterType, 0, 0);
+        obj->Get(L"DeviceID", 0, &deviceId, 0, 0);
+        obj->Get(L"PNPDeviceID", 0, &pnpId, 0, 0);
+        obj->Get(L"ServiceName", 0, &serviceName, 0, 0);
+
+        std::wcout << L"\n--- Network Adapter ---\n"
+                   << L"Name             : " << (name.vt == VT_BSTR ? name.bstrVal : L"(unknown)") << L"\n"
+                   << L"Description      : " << (description.vt == VT_BSTR ? description.bstrVal : L"(unknown)") << L"\n"
+                   << L"MAC Address      : " << (mac.vt == VT_BSTR ? mac.bstrVal : L"(none)") << L"\n"
+                   << L"Manufacturer     : " << (manufacturer.vt == VT_BSTR ? manufacturer.bstrVal : L"(unknown)") << L"\n";
+
+        if (status.vt == VT_I4) {
+            switch (status.intVal) {
+                case 0: std::wcout << L"Status           : Disconnected\n"; break;
+                case 1: std::wcout << L"Status           : Connecting\n"; break;
+                case 2: std::wcout << L"Status           : Connected\n"; break;
+                case 3: std::wcout << L"Status           : Disconnecting\n"; break;
+                case 4: std::wcout << L"Status           : Hardware not present\n"; break;
+                case 5: std::wcout << L"Status           : Hardware disabled\n"; break;
+                case 6: std::wcout << L"Status           : Hardware malfunction\n"; break;
+                case 7: std::wcout << L"Status           : Media disconnected\n"; break;
+                case 8: std::wcout << L"Status           : Authenticating\n"; break;
+                case 9: std::wcout << L"Status           : Authentication succeeded\n"; break;
+                case 10: std::wcout << L"Status          : Authentication failed\n"; break;
+                case 11: std::wcout << L"Status          : Invalid Address\n"; break;
+                case 12: std::wcout << L"Status          : Credentials Required\n"; break;
+                default: std::wcout << L"Status           : Unknown (" << status.intVal << L")\n"; break;
+            }
+        } else {
+            std::wcout << L"Status           : (unknown)\n";
+        }
+
+        printSpeed(speed);
+
+        std::wcout << L"Adapter Type     : " << (adapterType.vt == VT_BSTR ? adapterType.bstrVal : L"(unknown)") << L"\n"
+                   << L"Device ID        : " << (deviceId.vt == VT_BSTR ? deviceId.bstrVal : L"(unknown)") << L"\n"
+                   << L"PNP Device ID    : " << (pnpId.vt == VT_BSTR ? pnpId.bstrVal : L"(unknown)") << L"\n"
+                   << L"Service Name     : " << (serviceName.vt == VT_BSTR ? serviceName.bstrVal : L"(unknown)") << L"\n";
+
+        VariantClear(&name);
+        VariantClear(&description);
+        VariantClear(&mac);
+        VariantClear(&manufacturer);
+        VariantClear(&status);
+        VariantClear(&speed);
+        VariantClear(&adapterType);
+        VariantClear(&deviceId);
+        VariantClear(&pnpId);
+        VariantClear(&serviceName);
+
+        obj->Release();
+    }
+
+    if (!foundAny && !wArgs.empty()) {
+        std::wcerr << L"No network adapter found matching name: " << wArgs << L"\n";
+    }
+
+    enumerator->Release();
+    services->Release();
+    locator->Release();
+    CoUninitialize();
+}
+
+void CmdBattery(const std::string& args) {
+    SYSTEM_POWER_STATUS status;
+    if (!GetSystemPowerStatus(&status)) {
+        std::cout << "Failed to get battery status." << std::endl;
+        return;
+    }
+
+    std::cout << "Battery Status:" << std::endl;
+    if (status.ACLineStatus == 1)
+        std::cout << "  AC Power: Online" << std::endl;
+    else if (status.ACLineStatus == 0)
+        std::cout << "  AC Power: Offline" << std::endl;
+    else
+        std::cout << "  AC Power: Unknown" << std::endl;
+
+    if (status.BatteryFlag == 128) {
+        std::cout << "  Battery: No system battery detected." << std::endl;
+    } else {
+        if (status.BatteryLifePercent == 255) {
+            std::cout << "  Battery Life Percent: Unknown" << std::endl;
+        } else {
+            std::cout << "  Battery Life Percent: " << (int)status.BatteryLifePercent << "%" << std::endl;
+        }
+
+        if (status.BatteryLifeTime == (DWORD)-1) {
+            std::cout << "  Battery Life Time: Unknown" << std::endl;
+        } else {
+            std::cout << "  Battery Life Time: " << status.BatteryLifeTime << " seconds" << std::endl;
+        }
+    }
+}
+
+void CmdLoadAvg(const std::string& args) {
+#ifndef _WIN32
+    double loads[3];
+    if (getloadavg(loads, 3) == -1) {
+        std::cout << "Load average not available.\n";
+        return;
+    }
+    std::cout << "Load Average (1, 5, 15 min): "
+              << loads[0] << ", "
+              << loads[1] << ", "
+              << loads[2] << std::endl;
+#else
+   std::cout << "Load average is not supported on Windows.\n";
+#endif
+}
+
+void CmdWinLoadAvg(const std::string&) {
+    PDH_HQUERY query;
+    PDH_HCOUNTER counter;
+    PDH_FMT_COUNTERVALUE counterVal;
+
+    // Use nullptr and 0 for parameters to avoid conversion warnings
+    if (PdhOpenQuery(nullptr, 0, &query) != ERROR_SUCCESS) {
+        std::cout << "Failed to open PDH query.\n";
+        return;
+    }
+
+    if (PdhAddCounter(query, L"\\Processor(_Total)\\% Processor Time", 0, &counter) != ERROR_SUCCESS) {
+        std::cout << "Failed to add counter.\n";
+        PdhCloseQuery(query);
+        return;
+    }
+
+    PdhCollectQueryData(query);
+    Sleep(1000); // 1 second sample interval
+    PdhCollectQueryData(query);
+
+    if (PdhGetFormattedCounterValue(counter, PDH_FMT_DOUBLE, nullptr, &counterVal) != ERROR_SUCCESS) {
+        std::cout << "Failed to get counter value.\n";
+    } else {
+        std::cout << "CPU Usage (1s sample): " << counterVal.doubleValue << "%\n";
+    }
+
+    PdhCloseQuery(query);
+}
+
 
 void CmdVersion(const std::string&) {
     printf("Zephyr Version 1.0.2\n");
@@ -1844,6 +3127,53 @@ void CmdDiskInfo(const std::string& args) {
 }
 
 
+void PrintRegistryStartupApps(HKEY rootKey, const std::string& subKey, const std::string& scope) {
+    HKEY hKey;
+    if (RegOpenKeyExA(rootKey, subKey.c_str(), 0, KEY_READ, &hKey) != ERROR_SUCCESS) return;
+
+    char name[256], value[1024];
+    DWORD nameLen, valueLen, type;
+    DWORD index = 0;
+
+    std::cout << "\033[1;36m[" << scope << " Registry: " << subKey << "]\033[0m\n";
+    while (true) {
+        nameLen = sizeof(name);
+        valueLen = sizeof(value);
+        if (RegEnumValueA(hKey, index++, name, &nameLen, nullptr, &type, (LPBYTE)value, &valueLen) != ERROR_SUCCESS)
+            break;
+
+        if (type == REG_SZ) {
+            std::cout << "  \033[1;33m" << name << "\033[0m => " << value << "\n";
+        }
+    }
+
+    RegCloseKey(hKey);
+}
+
+void PrintStartupFolderApps(const std::string& path, const std::string& scope) {
+    std::cout << "\033[1;36m[" << scope << " Startup Folder]\033[0m\n";
+    for (const auto& entry : std::filesystem::directory_iterator(path)) {
+        std::cout << "  \033[1;33m" << entry.path().filename().string() << "\033[0m\n";
+    }
+}
+
+void CmdStartupApps(const std::string&) {
+    // Registry-based startup entries
+    PrintRegistryStartupApps(HKEY_CURRENT_USER, "Software\\Microsoft\\Windows\\CurrentVersion\\Run", "Current User");
+    PrintRegistryStartupApps(HKEY_LOCAL_MACHINE, "Software\\Microsoft\\Windows\\CurrentVersion\\Run", "All Users");
+
+    // Folder-based startup entries
+    char path[MAX_PATH];
+
+    if (SUCCEEDED(SHGetFolderPathA(nullptr, CSIDL_STARTUP, nullptr, 0, path))) {
+        PrintStartupFolderApps(path, "Current User");
+    }
+
+    if (SUCCEEDED(SHGetFolderPathA(nullptr, CSIDL_COMMON_STARTUP, nullptr, 0, path))) {
+        PrintStartupFolderApps(path, "All Users");
+    }
+}
+
 
 void CmdTouch(const std::string& args) {
     if (args.empty()) {
@@ -1997,42 +3327,42 @@ void CmdUptime(const std::string& args) {
     std::cout << seconds << "s" << std::endl;
 }
 
-bool EndProcessByName(const std::string& processName) {
+bool EndProcessByName(const std::string& nameToKill) {
+    std::wstring wname = WCharToWString(std::wstring(nameToKill.begin(), nameToKill.end()).c_str());
+
+    HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    if (snapshot == INVALID_HANDLE_VALUE) return false;
+
+    PROCESSENTRY32W pe;
+    pe.dwSize = sizeof(PROCESSENTRY32W);
+
     bool success = false;
 
-    HANDLE hSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
-    if (hSnapshot == INVALID_HANDLE_VALUE) {
-        std::cerr << "Failed to create process snapshot.\n";
-        return false;
-    }
-
-    PROCESSENTRY32 pe;
-    pe.dwSize = sizeof(PROCESSENTRY32);
-
-    if (Process32First(hSnapshot, &pe)) {
+    if (Process32FirstW(snapshot, &pe)) {
         do {
-            std::string exeName = pe.szExeFile;
-            if (_stricmp(exeName.c_str(), processName.c_str()) == 0) {
-                HANDLE hProcess = OpenProcess(PROCESS_TERMINATE, FALSE, pe.th32ProcessID);
-                if (hProcess != NULL) {
-                    if (TerminateProcess(hProcess, 1)) {
-                        std::cout << "Process " << processName << " (PID " << pe.th32ProcessID << ") terminated.\n";
-                        success = true;
-                    } else {
-                        std::cerr << "Failed to terminate process " << processName << ".\n";
-                    }
-                    CloseHandle(hProcess);
-                } else {
-                    std::cerr << "Unable to open process " << processName << ".\n";
+            if (_wcsicmp(pe.szExeFile, wname.c_str()) == 0) {
+                HANDLE hProc = OpenProcess(PROCESS_TERMINATE, FALSE, pe.th32ProcessID);
+                if (hProc) {
+                    success = TerminateProcess(hProc, 0);
+                    CloseHandle(hProc);
                 }
+                break;
             }
-        } while (Process32Next(hSnapshot, &pe));
-    } else {
-        std::cerr << "Failed to get first process.\n";
+        } while (Process32NextW(snapshot, &pe));
     }
 
-    CloseHandle(hSnapshot);
+    CloseHandle(snapshot);
     return success;
+}
+
+void CmdEndproc(const std::string& args) {
+    if (args.empty()) {
+        std::cout << "Usage: endproc <processname.exe>\n";
+        return;
+    }
+    if (!EndProcessByName(args)) {
+        std::cout << "No process named '" << args << "' found or failed to terminate.\n";
+    }
 }
 
 void CmdPeek(const std::string& args) {
@@ -2127,16 +3457,6 @@ void CmdDU(const std::string& args) {
     PrintHumanReadableSize(size);
 }
 
-void CmdEndproc(const std::string& args) {
-    if (args.empty()) {
-        std::cout << "Usage: endproc <processname.exe>\n";
-        return;
-    }
-    if (!EndProcessByName(args)) {
-        std::cout << "No process named '" << args << "' found or failed to terminate.\n";
-    }
-}
-
 void CmdDate(const std::string&) {
     auto now = std::chrono::system_clock::now();
     std::time_t now_time = std::chrono::system_clock::to_time_t(now);
@@ -2153,6 +3473,258 @@ void CmdEnv(const std::string&) {
 void CmdRefreshEnv(const std::string&) {
     std::cout << "Environment variables refreshed." << std::endl;
 }
+
+void CmdTar(const std::string& args) {
+    std::istringstream iss(args);
+    std::string archiveName;
+    iss >> archiveName;
+
+    if (archiveName.empty()) {
+        std::cout << "Usage: tar <archive.tar> <file1> [file2 ...]" << std::endl;
+        return;
+    }
+
+    std::ofstream archive(archiveName, std::ios::binary);
+    if (!archive.is_open()) {
+        std::cout << "Failed to create archive: " << archiveName << std::endl;
+        return;
+    }
+
+    std::string file;
+    while (iss >> file) {
+        std::ifstream infile(file, std::ios::binary);
+        if (!infile.is_open()) {
+            std::cout << "Cannot open file: " << file << std::endl;
+            continue;
+        }
+
+        infile.seekg(0, std::ios::end);
+        std::streamsize size = infile.tellg();
+        infile.seekg(0, std::ios::beg);
+        std::vector<char> buffer(size);
+        infile.read(buffer.data(), size);
+
+        uint32_t nameLen = static_cast<uint32_t>(file.size());
+        uint64_t dataLen = static_cast<uint64_t>(size);
+
+        archive.write(reinterpret_cast<char*>(&nameLen), sizeof(nameLen));
+        archive.write(file.c_str(), nameLen);
+        archive.write(reinterpret_cast<char*>(&dataLen), sizeof(dataLen));
+        archive.write(buffer.data(), size);
+    }
+
+    archive.close();
+    std::cout << "Archive " << archiveName << " created successfully." << std::endl;
+}
+
+void CmdGrep(const std::string& args) {
+    std::istringstream iss(args);
+    std::string token;
+
+    // Flags
+    bool flag_i = false; // case-insensitive
+    bool flag_v = false; // invert match
+    bool flag_n = false; // show line numbers
+    bool flag_c = false; // count matches only
+
+    // Parse flags
+    while (iss >> token && !token.empty() && token[0] == '-') {
+        for (size_t i = 1; i < token.size(); ++i) {
+            switch (token[i]) {
+                case 'i': flag_i = true; break;
+                case 'v': flag_v = true; break;
+                case 'n': flag_n = true; break;
+                case 'c': flag_c = true; break;
+                default:
+                    std::cout << "Unknown flag -" << token[i] << std::endl;
+                    return;
+            }
+        }
+    }
+
+    // After flags, token contains the pattern
+    std::string pattern = token;
+    std::string filename;
+    iss >> filename;
+
+    if (pattern.empty() || filename.empty()) {
+        std::cout << "Usage: grep [-i] [-v] [-n] [-c] <pattern> <file>" << std::endl;
+        return;
+    }
+
+    // Prepare pattern for case-insensitive comparison
+    std::string pattern_cmp = pattern;
+    if (flag_i) {
+        std::transform(pattern_cmp.begin(), pattern_cmp.end(), pattern_cmp.begin(),
+            [](unsigned char c){ return std::tolower(c); });
+    }
+
+    std::ifstream file(filename);
+    if (!file.is_open()) {
+        std::cout << "Cannot open file: " << filename << std::endl;
+        return;
+    }
+
+    std::string line;
+    int lineNumber = 1;
+    int matchCount = 0;
+
+    while (std::getline(file, line)) {
+        std::string line_cmp = line;
+        if (flag_i) {
+            std::transform(line_cmp.begin(), line_cmp.end(), line_cmp.begin(),
+                [](unsigned char c){ return std::tolower(c); });
+        }
+
+        bool found = (line_cmp.find(pattern_cmp) != std::string::npos);
+        if (flag_v) found = !found;
+
+        if (found) {
+            ++matchCount;
+            if (!flag_c) {
+                if (flag_n) {
+                    std::cout << lineNumber << ": ";
+                }
+                std::cout << line << std::endl;
+            }
+        }
+
+        ++lineNumber;
+    }
+
+    if (flag_c) {
+        std::cout << matchCount << std::endl;
+    } else if (matchCount == 0) {
+        std::cout << "No matches found for pattern \"" << pattern << "\" in file " << filename << "." << std::endl;
+    }
+}
+
+void CmdSed(const std::string& args) {
+    std::istringstream iss(args);
+    std::string cmd, filename;
+    iss >> cmd >> filename;
+
+    if (cmd.empty() || filename.empty()) {
+        std::cout << "Usage: sed s/old/new/[flags] <filename>" << std::endl;
+        return;
+    }
+
+    if (cmd.size() < 5 || cmd[0] != 's') {
+        std::cout << "Error: Only simple substitution supported, use syntax: s/old/new/[flags]" << std::endl;
+        return;
+    }
+
+    // Extract delimiter (usually '/')
+    char delim = cmd[1];
+    size_t secondDelim = cmd.find(delim, 2);
+    if (secondDelim == std::string::npos) {
+        std::cout << "Error: Invalid sed command syntax." << std::endl;
+        return;
+    }
+    size_t thirdDelim = cmd.find(delim, secondDelim + 1);
+    if (thirdDelim == std::string::npos) {
+        std::cout << "Error: Invalid sed command syntax." << std::endl;
+        return;
+    }
+
+    std::string oldStr = cmd.substr(2, secondDelim - 2);
+    std::string newStr = cmd.substr(secondDelim + 1, thirdDelim - secondDelim - 1);
+
+    // Flags are optional, after third delimiter
+    std::string flags = cmd.substr(thirdDelim + 1);
+
+    bool caseInsensitive = false;
+    bool globalReplace = true; // Your code already replaces all occurrences per line
+
+    for (char f : flags) {
+        if (f == 'i') caseInsensitive = true;
+        else if (f == 'g') globalReplace = true;
+        else {
+            std::cout << "Error: Unsupported flag '" << f << "'." << std::endl;
+            return;
+        }
+    }
+
+    // Open input file
+    std::ifstream inFile(filename);
+    if (!inFile.is_open()) {
+        std::cout << "Cannot open file: " << filename << std::endl;
+        return;
+    }
+
+    // Temporary output file
+    std::string tempFilename = filename + ".sedtmp";
+    std::ofstream outFile(tempFilename);
+    if (!outFile.is_open()) {
+        std::cout << "Cannot create temporary output file." << std::endl;
+        return;
+    }
+
+    // Helper lambda for case-insensitive find
+    auto find_ci = [](const std::string& haystack, const std::string& needle, size_t pos = 0) -> size_t {
+        auto it = std::search(
+            haystack.begin() + pos, haystack.end(),
+            needle.begin(), needle.end(),
+            [](char a, char b) {
+                return std::tolower((unsigned char)a) == std::tolower((unsigned char)b);
+            });
+        return (it == haystack.end()) ? std::string::npos : (size_t)(it - haystack.begin());
+    };
+
+    std::string line;
+    while (std::getline(inFile, line)) {
+        size_t pos = 0;
+        while (true) {
+            size_t foundPos = caseInsensitive ? find_ci(line, oldStr, pos) : line.find(oldStr, pos);
+            if (foundPos == std::string::npos)
+                break;
+
+            line.replace(foundPos, oldStr.length(), newStr);
+
+            if (!globalReplace)
+                break;
+
+            pos = foundPos + newStr.length();
+        }
+        outFile << line << "\n";
+    }
+
+    inFile.close();
+    outFile.close();
+
+    if (std::remove(filename.c_str()) != 0) {
+        std::cout << "Error deleting original file." << std::endl;
+        return;
+    }
+    if (std::rename(tempFilename.c_str(), filename.c_str()) != 0) {
+        std::cout << "Error renaming temp file." << std::endl;
+        return;
+    }
+
+    std::cout << "Substitution complete: replaced \"" << oldStr << "\" with \"" << newStr << "\" in " << filename;
+    if (flags.size() > 0) std::cout << " with flags '" << flags << "'";
+    std::cout << std::endl;
+}
+
+void CmdBasename(const std::string& args) {
+    std::istringstream iss(args);
+    std::string path;
+    iss >> path;
+
+    if (path.empty()) {
+        std::cout << "Usage: basename <path>" << std::endl;
+        return;
+    }
+
+    try {
+        std::filesystem::path p(path);
+        std::cout << p.filename().string() << std::endl;
+    } catch (const std::exception& e) {
+        std::cout << "Error getting basename: " << e.what() << std::endl;
+    }
+}
+
+
 
 void CmdRename(const std::string& args) {
     std::istringstream iss(args);
@@ -2172,21 +3744,107 @@ void CmdRename(const std::string& args) {
     }
 }
 
+void CmdHead(const std::string& args) {
+    std::istringstream iss(args);
+    std::string filename;
+    int lines = 10;
+
+    iss >> filename;
+    if (!(iss >> lines)) {
+        lines = 10;
+    }
+    std::ifstream file(filename);
+    if (filename.empty()) {
+        std::cout << "Usage: head <file> [lines]" << std::endl;
+        return;
+    }
+
+    std::string line;
+    int count = 0;
+    while (count < lines && std::getline(file, line)) {
+        std::cout << line << std::endl;
+        ++count; 
+    }
+ }
+
+void CmdTail(const std::string& args) {
+    std::istringstream iss(args);
+    std::string filename;
+    int lines = 10;
+
+    iss >> filename;
+    if (!(iss >> lines)) {
+        lines = 10;
+    }
+
+    if (filename.empty()) {
+        std::cout << "Usage: tail <file> [lines]" << std::endl;
+        return;
+    }
+
+    std::ifstream file(filename);
+    if (!file) {
+        std::cout << "Cannot open file: " << filename << std::endl;
+        return;
+    }
+
+    std::deque<std::string> buffer;
+    std::string line;
+
+    while (std::getline(file, line)) {
+        buffer.push_back(line);
+        if ((int)buffer.size() > lines) {
+            buffer.pop_front();
+        }
+    }
+
+    for (const auto& l : buffer) {
+        std::cout << l << std::endl;
+    }
+}
+ 
+bool contains_case_insensitive(const std::string& haystack, const std::string& needle) {
+    if (needle.empty()) return true;
+    std::string hay = haystack, need = needle;
+    std::transform(hay.begin(), hay.end(), hay.begin(), ::tolower);
+    std::transform(need.begin(), need.end(), need.begin(), ::tolower);
+    return hay.find(need) != std::string::npos;
+}
+
 void CmdDnsFlush(const std::string&) {
     system("ipconfig /flushdns");
     std::cout << "DNS cache flushed.\n";
 }
 
+bool RunBatchIfExists(const std::string& command, const std::string& args) {
+    namespace fs = std::filesystem;
+
+    std::string batFilename = command + ".bat";
+
+    if (fs::exists(batFilename)) {
+        std::string fullCmd = "cmd.exe /c \"" + batFilename + "\"";
+        if (!args.empty()) {
+            fullCmd += " " + args;
+        }
+        std::system(fullCmd.c_str());
+        return true;  
+    } else {
+        return false; 
+    }
+}
+
+
 void CmdHelp(const std::string&) {
     std::cout <<
-    "ZEPHYR COMMAND HELP\n"
+    "ZEPHYR COMMAND HELP\n"    
     "====================================================================================================\n"
     "| Commands:                                                                                        |\n"
     "| list [dir]          - List directory contents                                                    |\n"
     "| tree                - Show all files in a specified directory (by path)                          |\n"
-    "| hop [dir/noargs/~userhome] - Takes you to a specified directory. If not, says current dir info.  |\n"
+    "| hop [dir/noargs/~userhome] - Takes you to a specified directory. If not, says current says info. |\n"
     "| send <src> <dst>    - Copy file                                                                  |\n"
     "| zap <file>          - Delete file                                                                |\n"
+    "| fzap <file>         - Securely wipe and delete a file with multiple overwrite passes             |\n"
     "| shift <src> <dst>   - Move/rename file                                                           |\n"
     "| mkplace <dir>       - Create directory                                                           |\n"
     "| clear               - Clear screen                                                               |\n"
@@ -2194,11 +3852,15 @@ void CmdHelp(const std::string&) {
     "| look                - Show directory tree                                                        |\n"
     "| read <file>         - Display file contents                                                      |\n"
     "| peek <file>         - Display first few lines of a specified file.                               |\n"
+    "| head <file> [lines] - Show the first n lines of a file (default is 10)                           |\n"
+    "| tail <file> [lines] - Show the last n lines of a file (default is 10)                            |\n"
+    "| wc <file> [flags] — Count lines (-l), words (-w), and bytes (-c) in a file.                      |\n"
     "| write <file> <text> - Append text to file                                                        |\n"
     "| run <program>       - Run program                                                                |\n"
     "| echoe <text>        - Echo text                                                                  |\n"
     "| whereami            - Show current directory                                                     |\n"
     "| sysinfo             - Show system info                                                           |\n"
+    "| battery             - Show battery info (laptop only)                                            |\n"
     "| du                  - Show disk usage of directory, extern files work with the path.             |\n"
     "| diskinfo [C:/D:]    - Show disk info (default C:)                                                |\n"
     "| linkup              - Displays network interface information                                     |\n"
@@ -2218,15 +3880,18 @@ void CmdHelp(const std::string&) {
     "| smlink [-s/-h] <target> <link> - Create a symbolic link                                          |\n"
     "| procmon             - Monitor running processes and their memory usage                           |\n"
     "| cpuinfo             - Show CPU info                                                              |\n"
+    "| gpuinfo             - Show GPU info                                                              |\n"
+    "| biosinfo            - Show BIOS info                                                             |\n"
     "| uptime              - Show system uptime                                                         |\n"
     "| netstat             - Show network connections and listening ports                               |\n"
+    "| ntwkadp             - Shows adapters and their info. Show single info by name (ntwkadp (name))   |\n"
     "| mirror <source> <destination> - Mirror a directory structure                                     |\n"
     "| killtree <pid>      - Terminate a process tree by PID                                            |\n"
     "| pingtest <host>     - Ping a host and display results continuously                               |\n"
     "| scan <host>         - Scan for open ports on a host                                              |\n"
     "| get <url>           - Performs a GET request to the specified URL and displays the response      |\n"
     "| post [-H \"Header\"] [-T content-type] -d <body> <url> - Sends a POST request and shows response |\n"
-    "| head <url> [-H \"Header\"] - Sends HEAD request and shows response headers                       |\n"
+    "| header <url> [-H \"Header\"] - Sends HEAD request and shows response headers                     |\n"
     "| stat <filename>     - Prints statistics of a given file                                          |\n"
     "| cutemessage         - This is for my gf guys please don't run it                                 |\n"
     "| checkadmin          - Check if the process is running as admin                                   |\n"
@@ -2235,5 +3900,20 @@ void CmdHelp(const std::string&) {
     "| firewall            - Show Windows firewall status                                               |\n"
     "| drives              - List all available logical drives                                          |\n"
     "| smart               - Display SMART status of disk drives                                        |\n"
-    "====================================================================================================\n";
+    "| gzip <file>         - Compress a file using zlib (produces .gz)                                  |\n"
+    "| gunzip <file.gz>    - Decompress a .gz file using zlib                                           |\n"
+    "| zip <src> <dst.zip> - Create a zip archive using PowerShell                                      |\n"
+    "| unzip <zip> [dir]   - Extract a zip archive using PowerShell                                     |\n"
+    "| basename            - Show filename from path                                                    |\n"
+    "| loadavg             - Show current CPU usage (sampled over 1 second)                             |\n"
+    "| winloadavg          - Same as loadavg, but for Windows.                                          |\n"
+    "| mounts              - Displays a list of logical drives and their mount points or volumes.       |\n"
+    "| startupapps         - Displays a list of startup apps.                                           |\n"
+    "| fmeta               - Display detailed metadata and hash of a file                               |\n"
+    "| You can also run .bat files. Only type the name if its in the current directory.                 |\n"
+    "========================================================================================================================\n"
+    "| grep - grep searches for patterns in files; flags modify behavior like case (-i), invert (-v), line numbers (-n), and recursion (-r).\n"
+    "| sed s/old/new/[flags] <file> - sed replaces text in a file; flags control scope and case sensitivity.\n"
+    "========================================================================================================================\n";
 }
+

@@ -28,6 +28,8 @@ KILLTREE                  DONE
 
 PINGTEST                  DONE
 
+WC                       PROGRESS
+
 
 
          LINKUP
