@@ -36,6 +36,7 @@
 #include <iostream>
 #include <algorithm>
 #include <cctype>
+#include <codecvt>
 #include <string>
 #include <sstream>
 #include <unordered_map>
@@ -52,6 +53,7 @@
 #include <array>
 #include <random>
 #include <regex>
+#include <locale>
 
 // Link with necessary libraries
 #pragma comment(lib, "iphlpapi.lib")
@@ -216,6 +218,7 @@ void CmdCheckAdminWrapper(const std::string& args);
 void CmdListUsersWrapper(const std::string& args);
 void CmdStat(const std::string& args);
 void CmdFMeta(const std::string& args);
+void CmdFHash(const std::string& args);
 void CmdDnsFlush(const std::string& args);
 void CmdFirewallStatus(const std::string& args);
 void CmdSmartStatus(const std::string& args);
@@ -236,11 +239,13 @@ void CmdLoadAvg(const std::string& args);
 void CmdWinLoadAvg(const std::string& args);
 void CmdStartupApps(const std::string& args);
 void CmdMounts(const std::string& args);
+void CmdGroups(const std::string& args);
+void CmdHexdump(const std::string& args);
 bool RunBatchIfExists(const std::string& cmd, const std::string& args);
 void DeleteContents(const fs::path& dir);
 
 std::unordered_map<std::string, std::function<void(const std::string&)>> commands = {
-    {"list", CmdList}, {"tree", CmdTreeList}, {"send", CmdSend}, {"zap", CmdZap}, {"fzap", CmdFZap}, {"shift", CmdShift},
+    {"list", CmdList}, {"tree", CmdTreeList}, {"send", CmdSend}, {"zap", CmdZap}, {"fzap", CmdFZap}, {"fhash", CmdFHash}, {"shift", CmdShift},
     {"mkplace", CmdMkplace}, {"clear", CmdClear}, {"bye", CmdBye},
     {"look", CmdLook}, {"read", CmdRead}, {"peek", CmdPeek}, {"write", CmdWrite},
     {"run", CmdRun}, {"echoe", CmdEchoe}, {"whereami", CmdWhereami},
@@ -259,7 +264,7 @@ std::unordered_map<std::string, std::function<void(const std::string&)>> command
     {"firewall", CmdFirewallStatus}, {"drives", CmdDrives}, {"smart", CmdSmartStatus}, {"lsusb", CmdLsusb},
     {"tar", CmdTar}, {"gzip", CmdGzip}, {"gunzip", CmdGunzip}, {"zip", CmdZip}, {"unzip", CmdUnzip}, 
     {"grep", CmdGrep}, {"sed", CmdSed}, {"basename", CmdBasename}, {"head", CmdHead}, {"tail", CmdTail}, {"wc", CmdWc}, {"loadavg", CmdLoadAvg}, {"winloadavg", CmdWinLoadAvg},
-    {"mounts", CmdMounts}, {"gpuinfo", CmdGPUInfo}, {"biosinfo", CmdBIOSInfo}
+    {"mounts", CmdMounts}, {"gpuinfo", CmdGPUInfo}, {"biosinfo", CmdBIOSInfo}, {"groups", CmdGroups}, {"hexdump", CmdHexdump}
 };
 
 
@@ -348,6 +353,127 @@ void CmdScanWrapper(const std::string& args) {
 
     CmdPortScan(ip, startPort, endPort);
 }
+
+void CmdHexdump(const std::string& args) {
+    std::string filename = args;
+    if (filename.empty()) {
+        std::cerr << "Usage: hexdump <file>\n";
+        return;
+    }
+
+    std::ifstream file(filename, std::ios::binary);
+    if (!file) {
+        std::cerr << "Failed to open file: " << filename << "\n";
+        return;
+    }
+
+    unsigned char buffer[16];
+    std::streamsize bytesRead;
+    size_t offset = 0;
+
+    while (file.read(reinterpret_cast<char*>(buffer), sizeof(buffer)) || (bytesRead = file.gcount())) {
+        bytesRead = file.gcount();
+        std::cout << std::setw(8) << std::setfill('0') << std::hex << offset << "  ";
+
+        for (int i = 0; i < 16; ++i) {
+            if (i < bytesRead)
+                std::cout << std::setw(2) << (int)buffer[i] << " ";
+            else
+                std::cout << "   ";
+            if (i == 7) std::cout << " ";
+        }
+
+        std::cout << " |";
+        for (int i = 0; i < bytesRead; ++i) {
+            char c = buffer[i];
+            std::cout << (std::isprint(c) ? c : '.');
+        }
+        std::cout << "|\n";
+
+        offset += bytesRead;
+    }
+}
+
+void CmdFHash(const std::string& args) {
+    std::string filename = args;
+    if (filename.empty()) {
+        std::cerr << ANSI_RED << "Usage: fhash <file>\n" << ANSI_RESET;
+        return;
+    }
+
+    std::ifstream file(filename, std::ios::binary);
+    if (!file) {
+        std::cerr << ANSI_RED << "Failed to open file: " << filename << "\n" << ANSI_RESET;
+        return;
+    }
+
+    HCRYPTPROV hProv = 0;
+    if (!CryptAcquireContext(&hProv, nullptr, nullptr, PROV_RSA_AES, CRYPT_VERIFYCONTEXT)) {
+        std::cerr << ANSI_RED << "CryptAcquireContext failed.\n" << ANSI_RESET;
+        return;
+    }
+
+    struct HashAlg {
+        ALG_ID algId;
+        std::string name;
+    };
+
+    std::vector<HashAlg> algs = {
+        { CALG_MD5,       "MD5" },
+        { CALG_SHA1,      "SHA1" },
+        { CALG_SHA_256,   "SHA256" },
+        { CALG_SHA_384,   "SHA384" },
+        { CALG_SHA_512,   "SHA512" }
+    };
+
+    for (const auto& alg : algs) {
+        HCRYPTHASH hHash = 0;
+        if (!CryptCreateHash(hProv, alg.algId, 0, 0, &hHash)) {
+            std::cerr << ANSI_RED << "CryptCreateHash failed for " << alg.name << "\n" << ANSI_RESET;
+            continue;
+        }
+
+        std::ifstream f(filename, std::ios::binary);
+        std::vector<char> buffer(8192);
+        while (f.read(buffer.data(), buffer.size()) || f.gcount()) {
+            if (!CryptHashData(hHash, reinterpret_cast<BYTE*>(buffer.data()), static_cast<DWORD>(f.gcount()), 0)) {
+                std::cerr << ANSI_RED << "CryptHashData failed for " << alg.name << "\n" << ANSI_RESET;
+                CryptDestroyHash(hHash);
+                break;
+            }
+        }
+
+        BYTE hash[64];
+        DWORD hashLen = sizeof(hash);
+        if (CryptGetHashParam(hHash, HP_HASHVAL, hash, &hashLen, 0)) {
+            std::cout << ANSI_CYAN << std::setw(7) << std::left << alg.name << ANSI_RESET << ": " << ANSI_GREEN;
+            for (DWORD i = 0; i < hashLen; ++i)
+                std::cout << std::hex << std::uppercase << std::setw(2) << std::setfill('0') << (int)hash[i];
+            std::cout << ANSI_RESET << std::dec << "\n";
+        } else {
+            std::cerr << ANSI_RED << "CryptGetHashParam failed for " << alg.name << "\n" << ANSI_RESET;
+        }
+
+        CryptDestroyHash(hHash);
+    }
+
+    // Software CRC32
+    std::ifstream crcfile(filename, std::ios::binary);
+    uint32_t crc = 0xFFFFFFFF;
+    unsigned char b;
+    while (crcfile.read(reinterpret_cast<char*>(&b), 1)) {
+        crc ^= b;
+        for (int i = 0; i < 8; ++i)
+            crc = (crc >> 1) ^ (0xEDB88320 & -(crc & 1));
+    }
+    crc ^= 0xFFFFFFFF;
+
+    std::cout << ANSI_CYAN << "CRC32  " << ANSI_RESET << ": " << ANSI_GREEN << std::hex << std::uppercase
+              << std::setw(8) << std::setfill('0') << crc << ANSI_RESET << std::dec << "\n";
+
+    CryptReleaseContext(hProv, 0);
+}
+
 
 void CmdListUsersWrapper(const std::string& args) {
     LPUSER_INFO_0 pBuf = nullptr;
@@ -3816,6 +3942,31 @@ void CmdDnsFlush(const std::string&) {
     std::cout << "DNS cache flushed.\n";
 }
 
+void CmdGroups(const std::string& args) {
+    (void)args; 
+
+    WCHAR username[256];
+    DWORD size = 256;
+    if (!GetUserNameW(username, &size)) {
+        std::cerr << "Failed to get username.\n";
+        return;
+    }
+
+    LPLOCALGROUP_USERS_INFO_0 pBuf = nullptr;
+    DWORD entriesRead = 0, totalEntries = 0;
+
+    if (NetUserGetLocalGroups(nullptr, username, 0, LG_INCLUDE_INDIRECT,
+                              (LPBYTE*)&pBuf, MAX_PREFERRED_LENGTH, &entriesRead, &totalEntries) == NERR_Success) {
+        std::wcout << L"Groups for " << username << L":\n";
+        for (DWORD i = 0; i < entriesRead; ++i) {
+            std::wcout << L" - " << pBuf[i].lgrui0_name << L"\n";
+        }
+        NetApiBufferFree(pBuf);
+    } else {
+        std::cerr << "Failed to get group information.\n";
+    }
+}
+
 bool RunBatchIfExists(const std::string& command, const std::string& args) {
     namespace fs = std::filesystem;
 
@@ -3832,7 +3983,6 @@ bool RunBatchIfExists(const std::string& command, const std::string& args) {
         return false; 
     }
 }
-
 
 void CmdHelp(const std::string&) {
     std::cout <<
@@ -3910,10 +4060,12 @@ void CmdHelp(const std::string&) {
     "| mounts              - Displays a list of logical drives and their mount points or volumes.       |\n"
     "| startupapps         - Displays a list of startup apps.                                           |\n"
     "| fmeta               - Display detailed metadata and hash of a file                               |\n"
+    "| fhash <file>        - Calculate and display the hash of a file (MD5, SHA1, SHA256)               |\n"
+    "| groups              - Show groups the current user belongs to                                    |\n"
+    "| hexdump <file>      - Display file contents in hex format                                        |\n"
     "| You can also run .bat files. Only type the name if its in the current directory.                 |\n"
     "========================================================================================================================\n"
     "| grep - grep searches for patterns in files; flags modify behavior like case (-i), invert (-v), line numbers (-n), and recursion (-r).\n"
     "| sed s/old/new/[flags] <file> - sed replaces text in a file; flags control scope and case sensitivity.\n"
     "========================================================================================================================\n";
-}
-
+}   
