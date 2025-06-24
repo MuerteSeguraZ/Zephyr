@@ -1,3 +1,5 @@
+// So yeah, I'm a junior developer, and I've been digging into Windows system programming and command-line utilities. This is a shell I made.
+
 #define UNICODE
 #define _UNICODE
 
@@ -9,11 +11,16 @@
 #include <iphlpapi.h>        
 #include <icmpapi.h>
 #include <windows.h>  
+#include <wuapi.h>
+#include <sddl.h>          
+#include <lmcons.h>       
+#include <userenv.h>       
 #include <wincrypt.h>
+#include <Wtsapi32.h>
 #include <wbemidl.h>
 #include <comdef.h>
 #include <lm.h>
-#undef HLOG  // Remove PDH's HLOG to avoid conflict with lm.h
+#undef HLOG 
 #include <pdh.h>
 #include <pdhmsg.h>
 #include <initguid.h>
@@ -44,6 +51,7 @@
 #include <filesystem>
 #include <thread>
 #include <cstdlib>
+#include <cstdint>
 #include <fstream>
 #include <vector>
 #include <chrono>
@@ -55,6 +63,8 @@
 #include <regex>
 #include <locale>
 
+
+#include "bigcommands/inspect.h"
 // Link with necessary libraries
 #pragma comment(lib, "iphlpapi.lib")
 #pragma comment(lib, "ws2_32.lib")
@@ -63,6 +73,10 @@
 #pragma comment(lib, "Netapi32.lib")
 #pragma comment(lib, "wbemuuid.lib")
 #pragma comment(lib, "ntdll.lib")
+#pragma comment(lib, "userenv.lib")
+#pragma comment(lib, "advapi32.lib")
+#pragma comment(lib, "Ole32.lib")
+#pragma comment(lib, "OleAut32.lib")
 
 
 // Colors
@@ -204,13 +218,15 @@ void CmdProcMon(const std::string& args);
 void CmdCpuInfo(const std::string& args);
 void CmdGPUInfo(const std::string& args);
 void CmdBIOSInfo(const std::string& args);
+void CmdRamInfo(const std::string& args);
+void CmdUserInfo(const std::string& args);
+void CmdWhoAmI(const std::string& args);
 void CmdUptime(const std::string& args);
 void CmdNetstat(const std::string& args);
 void CmdTempClean(const std::string& args);
 void CmdMirror(const std::string& args);
 void CmdKillTree(const std::string& args);
 void CmdPingTest(const std::string& args);
-void CmdHttpGet(const std::string& url);
 void CmdHttpPost(const std::string& args);
 void CmdHttpHeader(const std::string& args);
 void CmdScanWrapper(const std::string& args);
@@ -241,8 +257,49 @@ void CmdStartupApps(const std::string& args);
 void CmdMounts(const std::string& args);
 void CmdGroups(const std::string& args);
 void CmdHexdump(const std::string& args);
+void CmdJobs(const std::string& args);
+void CmdBgJob(const std::string& args);
+void CmdFgJob(const std::string& args);
+void CmdStopJob(const std::string& args);
+void CmdStartJob(const std::string& args);
+void CmdClipCopy(const std::string& args);
+void CmdFSize(const std::string& arg);
 bool RunBatchIfExists(const std::string& cmd, const std::string& args);
+void CmdHttpGet(const std::string& url);
 void DeleteContents(const fs::path& dir);
+
+void CmdInspect(const std::string& args) {
+    std::istringstream iss(args);
+    std::string subcmd;
+    iss >> subcmd;
+
+    std::string remainingArgs;
+    std::getline(iss, remainingArgs);
+    remainingArgs.erase(0, remainingArgs.find_first_not_of(" \t"));
+
+    if (subcmd == "file") {
+        CmdInspectFile(remainingArgs);
+    } else if (subcmd == "proc") {
+        CmdInspectProc(remainingArgs);
+    } else if (subcmd == "user") {
+        CmdInspectUser(remainingArgs);
+    } else if (subcmd == "mem") {
+        CmdInspectMem(remainingArgs);
+    } else if (subcmd == "net") {
+        CmdInspectNet(remainingArgs);
+    } else if (subcmd == "win") {
+        CmdInspectWin(remainingArgs);
+    } else if (subcmd == "env") {
+        CmdInspectEnv(remainingArgs);
+    } else if (subcmd == "boot") {
+        CmdInspectBoot(remainingArgs);
+    } else if (subcmd == "help" || subcmd.empty()) {
+        CmdInspectHelp(remainingArgs);
+    } else {
+        std::cerr << "Usage: inspect <file|proc|user|mem|net|win|env|boot> [args]\n";
+    }
+}
+
 
 std::unordered_map<std::string, std::function<void(const std::string&)>> commands = {
     {"list", CmdList}, {"tree", CmdTreeList}, {"send", CmdSend}, {"zap", CmdZap}, {"fzap", CmdFZap}, {"fhash", CmdFHash}, {"shift", CmdShift},
@@ -259,12 +316,14 @@ std::unordered_map<std::string, std::function<void(const std::string&)>> command
     {"smlink", CmdSmLink}, {"procmon", CmdProcMon}, 
     {"cpuinfo", CmdCpuInfo}, {"uptime", CmdUptime}, {"netstat", CmdNetstat}, {"mirror", CmdMirror}, 
     {"tempclean", CmdTempClean}, {"killtree", CmdKillTree}, {"pingtest", CmdPingTest}, 
-    {"get", CmdHttpGet}, {"post", CmdHttpPost}, {"header", CmdHttpHeader}, {"scan", CmdScanWrapper}, {"hop", CmdHop}, {"stat", CmdStat}, {"fmeta", CmdFMeta},
+    {"get", CmdHttpGet}, {"post", CmdHttpPost}, {"header", CmdHttpHeader}, {"scan", CmdScanWrapper}, {"hop", CmdHop}, {"stat", CmdStat}, {"fmeta", CmdFMeta}, {"fsize", CmdFSize},
     {"checkadmin", CmdCheckAdminWrapper}, {"listusers", CmdListUsersWrapper}, {"dnsflush", CmdDnsFlush},
     {"firewall", CmdFirewallStatus}, {"drives", CmdDrives}, {"smart", CmdSmartStatus}, {"lsusb", CmdLsusb},
     {"tar", CmdTar}, {"gzip", CmdGzip}, {"gunzip", CmdGunzip}, {"zip", CmdZip}, {"unzip", CmdUnzip}, 
     {"grep", CmdGrep}, {"sed", CmdSed}, {"basename", CmdBasename}, {"head", CmdHead}, {"tail", CmdTail}, {"wc", CmdWc}, {"loadavg", CmdLoadAvg}, {"winloadavg", CmdWinLoadAvg},
-    {"mounts", CmdMounts}, {"gpuinfo", CmdGPUInfo}, {"biosinfo", CmdBIOSInfo}, {"groups", CmdGroups}, {"hexdump", CmdHexdump}
+    {"mounts", CmdMounts}, {"gpuinfo", CmdGPUInfo}, {"biosinfo", CmdBIOSInfo}, {"raminfo", CmdRamInfo}, {"userinfo", CmdUserInfo}, {"whoami", CmdWhoAmI}, {"groups", CmdGroups}, {"hexdump", CmdHexdump},
+    {"jobs", CmdJobs}, {"bgjob", CmdBgJob}, {"fgjob", CmdFgJob}, {"stopjob", CmdStopJob}, {"startjob", CmdStartJob}, {"clipcopy", CmdClipCopy},
+    {"inspect", CmdInspect}
 };
 
 
@@ -278,6 +337,7 @@ void EnableVirtualTerminalProcessing() {
     dwMode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING;
     SetConsoleMode(hOut, dwMode);
 }
+
 
 int main() {
     EnableVirtualTerminalProcessing();
@@ -300,7 +360,7 @@ int main() {
             it->second(args);
         } else {
             if (!RunBatchIfExists(cmd, args)) {
-                std::cout << "Command " << cmd << " isn't recognized as an internal or external command." << std::endl;
+                std::cout << "Command '" << cmd << "' isn't recognized as an internal or external command." << std::endl;
             }
         }
     }
@@ -352,6 +412,80 @@ void CmdScanWrapper(const std::string& args) {
     }
 
     CmdPortScan(ip, startPort, endPort);
+}
+
+std::string AddThousandsCommas(const std::string& numStr) {
+    int len = (int)numStr.length();
+    int commas = (len - 1) / 3;
+    if (commas == 0) return numStr;
+
+    std::string result;
+    int firstGroupLen = len - commas * 3;
+    result = numStr.substr(0, firstGroupLen);
+
+    for (int i = 0; i < commas; ++i) {
+        result += ",";
+        result += numStr.substr(firstGroupLen + i * 3, 3);
+    }
+    return result;
+}
+
+void CmdFSize(const std::string& arg) {
+    if (arg.empty()) {
+        std::cerr << "Usage: fsize <bytes>\n";
+        return;
+    }
+
+    uint64_t bytes = 0;
+    try {
+        bytes = std::stoull(arg);
+    } catch (...) {
+        std::cerr << "Invalid input: " << arg << "\n";
+        return;
+    }
+
+    const double KB = 1000.0;
+    const double MB = KB * 1000.0;
+    const double GB = MB * 1000.0;
+    const double TB = GB * 1000.0;
+
+    double value = 0.0;
+    std::string unit;
+
+    if (bytes >= TB) {
+        value = bytes / TB;
+        unit = "TB";
+    } else if (bytes >= GB) {
+        value = bytes / GB;
+        unit = "GB";
+    } else if (bytes >= MB) {
+        value = bytes / MB;
+        unit = "MB";
+    } else if (bytes >= KB) {
+        value = bytes / KB;
+        unit = "KB";
+    } else {
+        value = (double)bytes;
+        unit = "bytes";
+    }
+
+    std::ostringstream oss;
+    oss << std::fixed << std::setprecision(6) << value;
+    std::string formatted = oss.str();
+
+    // Replace '.' with ',' as decimal separator
+    size_t dotPos = formatted.find('.');
+    if (dotPos != std::string::npos) {
+        formatted[dotPos] = ',';
+    }
+
+    // Add thousands commas only to integer part
+    std::string intPart = dotPos == std::string::npos ? formatted : formatted.substr(0, dotPos);
+    std::string fracPart = dotPos == std::string::npos ? "" : formatted.substr(dotPos);
+
+    intPart = AddThousandsCommas(intPart);
+
+    std::cout << intPart << fracPart << " " << unit << "\n";
 }
 
 void CmdHexdump(const std::string& args) {
@@ -457,7 +591,6 @@ void CmdFHash(const std::string& args) {
         CryptDestroyHash(hHash);
     }
 
-    // Software CRC32
     std::ifstream crcfile(filename, std::ios::binary);
     uint32_t crc = 0xFFFFFFFF;
     unsigned char b;
@@ -473,6 +606,235 @@ void CmdFHash(const std::string& args) {
 
     CryptReleaseContext(hProv, 0);
 }
+
+struct Job {
+    int jobId;
+    DWORD pid;         
+    std::string command;
+    std::string status;  
+};
+
+std::vector<Job> g_jobs; 
+int g_nextJobId = 1;
+
+void CmdJobs(const std::string& args) {
+    if (g_jobs.empty()) {
+        std::cout << "No background jobs.\n";
+        return;
+    }
+
+    std::cout << "Jobs:\n";
+    std::cout << "ID\tPID\tStatus\t\tCommand\n";
+    std::cout << "-------------------------------------------\n";
+
+    for (const auto& job : g_jobs) {
+        std::cout << job.jobId << "\t"
+                  << job.pid << "\t"
+                  << job.status << "\t\t"
+                  << job.command << "\n";
+    }
+}
+
+bool ResumeProcessThreads(DWORD pid) {
+    HANDLE hThreadSnap = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
+    if (hThreadSnap == INVALID_HANDLE_VALUE) {
+        return false;
+    }
+
+    THREADENTRY32 te32;
+    te32.dwSize = sizeof(THREADENTRY32);
+
+    if (!Thread32First(hThreadSnap, &te32)) {
+        CloseHandle(hThreadSnap);
+        return false;
+    }
+
+    bool resumedAny = false;
+
+    do {
+        if (te32.th32OwnerProcessID == pid) {
+            HANDLE hThread = OpenThread(THREAD_SUSPEND_RESUME, FALSE, te32.th32ThreadID);
+            if (hThread) {
+                // ResumeThread returns previous suspend count
+                while (ResumeThread(hThread) > 0) {
+                    resumedAny = true;
+                }
+                CloseHandle(hThread);
+            }
+        }
+    } while (Thread32Next(hThreadSnap, &te32));
+
+    CloseHandle(hThreadSnap);
+    return resumedAny;
+}
+
+void CmdBgJob(const std::string& args) {
+    if (args.empty()) {
+        std::cerr << "Usage: bg <jobId>\n";
+        return;
+    }
+
+    int jobId = std::stoi(args);
+
+    auto it = std::find_if(g_jobs.begin(), g_jobs.end(), [jobId](const Job& job) {
+        return job.jobId == jobId;
+    });
+
+    if (it == g_jobs.end()) {
+        std::cerr << "Job " << jobId << " not found.\n";
+        return;
+    }
+
+    if (it->status != "Stopped") {
+        std::cerr << "Job " << jobId << " is not stopped.\n";
+        return;
+    }
+
+    if (ResumeProcessThreads(it->pid)) {
+        it->status = "Running";
+        std::cout << "Job " << jobId << " resumed in background.\n";
+    } else {
+        std::cerr << "Failed to resume job " << jobId << ".\n";
+    }
+}
+
+bool SuspendProcessThreads(DWORD pid) {
+    HANDLE hThreadSnap = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
+    if (hThreadSnap == INVALID_HANDLE_VALUE) return false;
+
+    THREADENTRY32 te32{ sizeof(te32) };
+    if (!Thread32First(hThreadSnap, &te32)) {
+        CloseHandle(hThreadSnap);
+        return false;
+    }
+
+    bool suspendedAny = false;
+    do {
+        if (te32.th32OwnerProcessID == pid) {
+            HANDLE hThread = OpenThread(THREAD_SUSPEND_RESUME, FALSE, te32.th32ThreadID);
+            if (hThread) {
+                SuspendThread(hThread);
+                suspendedAny = true;
+                CloseHandle(hThread);
+            }
+        }
+    } while (Thread32Next(hThreadSnap, &te32));
+
+    CloseHandle(hThreadSnap);
+    return suspendedAny;
+}
+
+void CmdStopJob(const std::string& args) {
+    if (args.empty()) {
+        std::cerr << "Usage: stop <jobId>\n";
+        return;
+    }
+
+    int jobId = std::stoi(args);
+
+    auto it = std::find_if(g_jobs.begin(), g_jobs.end(), [jobId](const Job& job) {
+        return job.jobId == jobId;
+    });
+
+    if (it == g_jobs.end()) {
+        std::cerr << "Job " << jobId << " not found.\n";
+        return;
+    }
+
+    if (it->status == "Stopped") {
+        std::cerr << "Job " << jobId << " is already stopped.\n";
+        return;
+    }
+
+    if (SuspendProcessThreads(it->pid)) {
+        it->status = "Stopped";
+        std::cout << "Job " << jobId << " stopped.\n";
+    } else {
+        std::cerr << "Failed to stop job " << jobId << ".\n";
+    }
+}
+
+void CmdFgJob(const std::string& args) {
+    if (args.empty()) {
+        std::cerr << "Usage: fg <jobId>\n";
+        return;
+    }
+
+    int jobId = std::stoi(args);
+
+    auto it = std::find_if(g_jobs.begin(), g_jobs.end(), [jobId](const Job& job) {
+        return job.jobId == jobId;
+    });
+
+    if (it == g_jobs.end()) {
+        std::cerr << "Job " << jobId << " not found.\n";
+        return;
+    }
+
+    if (it->status == "Stopped") {
+        if (!ResumeProcessThreads(it->pid)) {
+            std::cerr << "Failed to resume job " << jobId << ".\n";
+            return;
+        }
+        it->status = "Running";
+    }
+
+    std::cout << "Bringing job " << jobId << " to foreground. When done, restart Zephyr.\n";
+
+    // Wait for process to finish (blocking)
+    HANDLE hProcess = OpenProcess(SYNCHRONIZE, FALSE, it->pid);
+    if (hProcess) {
+        WaitForSingleObject(hProcess, INFINITE);
+        CloseHandle(hProcess);
+        it->status = "Done";
+        std::cout << "Job " << jobId << " finished.\n";
+    } else {
+        std::cerr << "Failed to open process handle.\n";
+    }
+}
+
+bool StartProcess(const std::string& command, DWORD& pid) {
+    STARTUPINFOA si = { sizeof(si) };
+    PROCESS_INFORMATION pi;
+
+    std::string cmd = command;
+    if (!CreateProcessA(nullptr, cmd.data(), nullptr, nullptr, FALSE,
+                        CREATE_SUSPENDED, nullptr, nullptr, &si, &pi)) {
+        return false;
+    }
+
+    pid = pi.dwProcessId;
+    ResumeThread(pi.hThread); // Start the main thread
+    CloseHandle(pi.hThread);
+    CloseHandle(pi.hProcess);
+    return true;
+}
+
+void CmdStartJob(const std::string& args) {
+    if (args.empty()) {
+        std::cerr << "Usage: startjob <command>\n";
+        return;
+    }
+
+DWORD pid;
+if (StartProcess(args, pid)) {
+    static int nextJobId = 1;
+    g_jobs.push_back(Job{
+        nextJobId++,  // jobId
+        pid,          // pid
+        "Running",    // status
+        args          // command
+    });
+    std::cout << "Started job " << g_jobs.back().jobId << " with PID " << pid << ".\n";
+} else {
+    std::cerr << "Failed to start job: " << args << "\n";
+    }
+}
+
+
+
+
+
 
 
 void CmdListUsersWrapper(const std::string& args) {
@@ -508,7 +870,6 @@ void CmdMounts(const std::string&) {
     std::cout << "\033[1;36mMounted Volumes:\033[0m\n";
 
     do {
-        // Get associated paths (drive letters or mount points)
         DWORD charCount = 0;
         GetVolumePathNamesForVolumeNameA(volumeName, nullptr, 0, &charCount);
         std::vector<char> names(charCount);
@@ -527,7 +888,6 @@ void CmdMounts(const std::string&) {
         }
         if (paths.empty()) paths = "—";
 
-        // Get volume label, FS, and space info
         char label[MAX_PATH] = {}, fsName[MAX_PATH] = {};
         DWORD serialNumber, maxCompLen, fsFlags;
         GetVolumeInformationA(volumeName, label, MAX_PATH, &serialNumber, &maxCompLen, &fsFlags, fsName, MAX_PATH);
@@ -574,11 +934,9 @@ void CmdFMeta(const std::string& args) {
         return;
     }
 
-    // Print basic file size
     std::cout << "File: " << path << "\n";
     std::cout << "Size: " << fs::file_size(path) << " bytes\n";
 
-    // Print timestamps
     WIN32_FILE_ATTRIBUTE_DATA fileInfo;
     if (!GetFileAttributesExA(file_path.c_str(), GetFileExInfoStandard, &fileInfo)) {
         std::cout << "Failed to get file attributes.\n";
@@ -600,7 +958,6 @@ void CmdFMeta(const std::string& args) {
     std::cout << "Last Accessed: " << FileTimeToString(fileInfo.ftLastAccessTime) << "\n";
     std::cout << "Last Modified: " << FileTimeToString(fileInfo.ftLastWriteTime) << "\n";
 
-    // Calculate SHA256 hash
     HCRYPTPROV hProv = 0;
     HCRYPTHASH hHash = 0;
     if (!CryptAcquireContext(&hProv, NULL, NULL, PROV_RSA_AES, CRYPT_VERIFYCONTEXT)) {
@@ -645,6 +1002,68 @@ void CmdFMeta(const std::string& args) {
     CryptDestroyHash(hHash);
     CryptReleaseContext(hProv, 0);
 }
+
+void CmdRamInfo(const std::string& args) {
+    MEMORYSTATUSEX memStatus;
+    memStatus.dwLength = sizeof(memStatus);
+
+    if (!GlobalMemoryStatusEx(&memStatus)) {
+        std::cerr << ANSI_RED << "Failed to retrieve memory information.\n" << ANSI_RESET;
+        return;
+    }
+
+    auto toMB = [](SIZE_T bytes) { return bytes / (1024 * 1024); };
+    auto toGB = [](SIZE_T bytes) { return bytes / (1024.0 * 1024.0 * 1024.0); };
+
+    auto printSection = [=](const std::string& title, DWORDLONG total, DWORDLONG avail, DWORDLONG used) {
+        std::cout << ANSI_YELLOW << ">> " << title << "\n" << ANSI_RESET;
+        std::cout << "  Total     : " << toMB(total) << " MB (" << std::fixed << std::setprecision(2) << toGB(total) << " GB)\n";
+        std::cout << "  Available : " << toMB(avail) << " MB (" << std::fixed << std::setprecision(2) << toGB(avail) << " GB)\n";
+        std::cout << "  Used      : " << toMB(used) << " MB (" << std::fixed << std::setprecision(2) << toGB(used) << " GB)\n";
+    };
+
+    DWORDLONG totalPhys = memStatus.ullTotalPhys;
+    DWORDLONG availPhys = memStatus.ullAvailPhys;
+    DWORDLONG usedPhys = totalPhys - availPhys;
+
+    DWORDLONG totalPage = memStatus.ullTotalPageFile;
+    DWORDLONG availPage = memStatus.ullAvailPageFile;
+    DWORDLONG usedPage = totalPage - availPage;
+
+    DWORDLONG totalVirt = memStatus.ullTotalVirtual;
+    DWORDLONG availVirt = memStatus.ullAvailVirtual;
+    DWORDLONG usedVirt = totalVirt - availVirt;
+
+    DWORDLONG totalExt = memStatus.ullAvailExtendedVirtual;
+
+    std::cout << ANSI_CYAN << "=== RAM Information ===\n" << ANSI_RESET;
+
+    printSection("Physical Memory (RAM)", totalPhys, availPhys, usedPhys);
+    printSection("Page File (Swap on Disk)", totalPage, availPage, usedPage);
+
+    std::cout << ANSI_YELLOW << ">> Virtual Address Space (User-Mode Limit on 64-bit)\n" << ANSI_RESET;
+    std::cout << "  Total     : " << toMB(totalVirt) << " MB (" << std::fixed << std::setprecision(2) << toGB(totalVirt) << " GB)\n";
+    std::cout << "  Available : " << toMB(availVirt) << " MB (" << std::fixed << std::setprecision(2) << toGB(availVirt) << " GB)\n";
+    std::cout << "  Used      : " << toMB(usedVirt) << " MB (" << std::fixed << std::setprecision(2) << toGB(usedVirt) << " GB)\n";
+
+    std::cout << ANSI_YELLOW << ">> Load:\n" << ANSI_RESET;
+    std::cout << "  Memory Load: " << std::fixed << std::setprecision(2) << (double)memStatus.dwMemoryLoad << " %\n";
+
+    std::cout << ANSI_YELLOW << ">> Extended Virtual (Reserved - usually zero):\n" << ANSI_RESET;
+    std::cout << "  Available : " << toMB(totalExt) << " MB (" << std::fixed << std::setprecision(2) << toGB(totalExt) << " GB)\n";
+
+    PERFORMANCE_INFORMATION perfInfo;
+    if (GetPerformanceInfo(&perfInfo, sizeof(perfInfo))) {
+        std::cout << ANSI_YELLOW << ">> Performance Info (Pages):\n" << ANSI_RESET;
+        std::cout << "  Commit Total      : " << perfInfo.CommitTotal << " pages\n";
+        std::cout << "  Commit Limit      : " << perfInfo.CommitLimit << " pages\n";
+        std::cout << "  Commit Peak       : " << perfInfo.CommitPeak << " pages\n";
+        std::cout << "  Physical Total    : " << perfInfo.PhysicalTotal << " pages\n";
+        std::cout << "  Physical Available: " << perfInfo.PhysicalAvailable << " pages\n";
+        std::cout << "  System Cache      : " << perfInfo.SystemCache << " pages\n";
+    }
+}
+
 
 void CmdLsusb(const std::string& args) {
     if (!args.empty()) {
@@ -727,7 +1146,7 @@ void CmdWc(const std::string& args) {
         ++lines;
         words += std::count_if(line.begin(), line.end(), [](char c) { return std::isspace(c); }) + 1;
         chars += line.size();
-        bytes += line.size() + 1; // newline
+        bytes += line.size() + 1; 
         maxLineLen = std::max(maxLineLen, line.size()); 
     }
 
@@ -839,7 +1258,6 @@ void CmdZip(const std::string& args) {
         return;
     }
 
-    // Escape paths with quotes
     std::string command = "powershell -Command \"Compress-Archive -Path \\\"" + srcFile + "\\\" -DestinationPath \\\"" + zipFile + "\\\" -Force\"";
 
     int result = std::system(command.c_str());
@@ -870,7 +1288,6 @@ void CmdUnzip(const std::string& args) {
         outputDir = std::filesystem::current_path().string();
     }
 
-    // Escape paths with quotes
     std::string command = "powershell -Command \"Expand-Archive -Path \\\"" + zipFile + "\\\" -DestinationPath \\\"" + outputDir + "\\\" -Force\"";
 
     int result = std::system(command.c_str());
@@ -1651,14 +2068,14 @@ void CmdProcMon(const std::string&) {
         if (hProc) {
             PROCESS_MEMORY_COUNTERS pmc;
             if (GetProcessMemoryInfo(hProc, &pmc, sizeof(pmc))) {
-                memUsage = pmc.WorkingSetSize / (1024 * 1024); // Convert to MB
+                memUsage = pmc.WorkingSetSize / (1024 * 1024); 
             }
             CloseHandle(hProc);
         }
 
         ProcInfo info;
         info.pid = pid;
-        info.name = WCharToWString(pe.szExeFile); // Safe conversion
+        info.name = WCharToWString(pe.szExeFile); 
         info.memMB = memUsage;
         processes.push_back(info);
 
@@ -1695,7 +2112,7 @@ void PrintFeature(const std::string& name, bool supported) {
 
 void CmdCpuInfo(const std::string& args) {
     if (!args.empty()) {
-        std::cout << ANSI_BOLD_RED "Usage: cpuspeed" ANSI_RESET << std::endl;
+        std::cout << ANSI_BOLD_RED "Usage: cpuinfo" ANSI_RESET << std::endl;
         return;
     }
 
@@ -1757,9 +2174,9 @@ void CmdCpuInfo(const std::string& args) {
     int vendor[4] = {};
     __cpuid(vendor, 0);
     char vendorId[13] = {};
-    *reinterpret_cast<int*>(vendorId) = vendor[1];      // EBX
-    *reinterpret_cast<int*>(vendorId + 4) = vendor[3];  // EDX
-    *reinterpret_cast<int*>(vendorId + 8) = vendor[2];  // ECX
+    *reinterpret_cast<int*>(vendorId) = vendor[1];      
+    *reinterpret_cast<int*>(vendorId + 4) = vendor[3];  
+    *reinterpret_cast<int*>(vendorId + 8) = vendor[2];  
 
     __cpuid(cpuInfo, 1);
     int family = ((cpuInfo[0] >> 8) & 0xf) + ((cpuInfo[0] >> 20) & 0xff);
@@ -1794,7 +2211,6 @@ void CmdCpuInfo(const std::string& args) {
     std::cout << "  L2 Cache: " << (L2 ? std::to_string(L2 / 1024) + " KB" : "Unknown") << std::endl;
     std::cout << "  L3 Cache: " << (L3 ? std::to_string(L3 / 1024) + " KB" : "Unknown") << std::endl;
 
-    // Feature Detection
     std::cout << ANSI_BOLD_CYAN "\nSupported Instruction Sets:\n" ANSI_RESET;
 
     bool sse41 = (cpuInfo[2] & (1 << 19));
@@ -1826,6 +2242,209 @@ void CmdCpuInfo(const std::string& args) {
     PrintFeature("SGX",    sgx);
 
     std::cout << ANSI_BOLD_CYAN "=========================================================" ANSI_RESET << std::endl;
+}
+
+void CmdUserInfo(const std::string& args) {
+    char username[UNLEN + 1];
+    DWORD username_len = sizeof(username);
+    if (!GetUserNameA(username, &username_len)) {
+        std::cerr << ANSI_BOLD_RED << "Failed to get username\n" << ANSI_RESET;
+        return;
+    }
+
+    char domainname[DNLEN + 1];
+    DWORD domain_len = sizeof(domainname);
+    SID_NAME_USE sidType;
+    PSID pSid = nullptr;
+    DWORD sidSize = 0;
+
+    LookupAccountNameA(NULL, username, NULL, &sidSize, NULL, &domain_len, &sidType);
+    pSid = (PSID)malloc(sidSize);
+    if (!LookupAccountNameA(NULL, username, pSid, &sidSize, domainname, &domain_len, &sidType)) {
+        std::cerr << ANSI_BOLD_RED << "Failed to lookup account name\n" << ANSI_RESET;
+        free(pSid);
+        return;
+    }
+
+    LPSTR sidString = nullptr;
+    if (!ConvertSidToStringSidA(pSid, &sidString)) {
+        sidString = nullptr;
+    }
+
+    HANDLE token;
+    if (!OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &token)) {
+        std::cerr << ANSI_BOLD_RED << "Failed to open process token\n" << ANSI_RESET;
+        free(pSid);
+        if (sidString) LocalFree(sidString);
+        return;
+    }
+
+    DWORD tokenInfoLength = 0;
+    GetTokenInformation(token, TokenGroups, NULL, 0, &tokenInfoLength);
+    std::vector<BYTE> tokenInfoBuffer(tokenInfoLength);
+
+    if (!GetTokenInformation(token, TokenGroups, tokenInfoBuffer.data(), tokenInfoLength, &tokenInfoLength)) {
+        std::cerr << ANSI_BOLD_RED << "Failed to get token groups\n" << ANSI_RESET;
+        CloseHandle(token);
+        free(pSid);
+        if (sidString) LocalFree(sidString);
+        return;
+    }
+
+    TOKEN_GROUPS* groups = (TOKEN_GROUPS*)tokenInfoBuffer.data();
+
+    std::cout << ANSI_BOLD_BLUE << "\n=== User Information ===" << ANSI_RESET << "\n";
+    std::cout << ANSI_BOLD_GREEN << "Username       : " << ANSI_RESET << username << "\n";
+    std::cout << ANSI_BOLD_GREEN << "Domain         : " << ANSI_RESET << domainname << "\n";
+    std::cout << ANSI_BOLD_GREEN << "User SID       : " << ANSI_RESET << (sidString ? sidString : "N/A") << "\n";
+
+    std::cout << ANSI_BOLD_YELLOW << "Groups         :" << ANSI_RESET << "\n";
+    for (DWORD i = 0; i < groups->GroupCount; i++) {
+        SID_NAME_USE use;
+        char groupName[256], groupDomain[256];
+        DWORD groupNameLen = sizeof(groupName);
+        DWORD groupDomainLen = sizeof(groupDomain);
+
+        if (LookupAccountSidA(NULL, groups->Groups[i].Sid, groupName, &groupNameLen, groupDomain, &groupDomainLen, &use)) {
+            std::cout << "  - " << ANSI_CYAN << groupDomain << "\\" << groupName << ANSI_RESET << "\n";
+        }
+        else {
+            std::cout << "  - " << ANSI_RED << "Unknown Group" << ANSI_RESET << "\n";
+        }
+    }
+
+    DWORD privSize = 0;
+    GetTokenInformation(token, TokenPrivileges, NULL, 0, &privSize);
+    std::vector<BYTE> privBuffer(privSize);
+
+    if (GetTokenInformation(token, TokenPrivileges, privBuffer.data(), privSize, &privSize)) {
+        TOKEN_PRIVILEGES* privs = (TOKEN_PRIVILEGES*)privBuffer.data();
+        std::cout << ANSI_BOLD_YELLOW << "Privileges    :" << ANSI_RESET << "\n";
+        for (DWORD i = 0; i < privs->PrivilegeCount; i++) {
+            LUID_AND_ATTRIBUTES& la = privs->Privileges[i];
+            char name[256];
+            DWORD nameLen = sizeof(name);
+            if (LookupPrivilegeNameA(NULL, &la.Luid, name, &nameLen)) {
+                std::cout << "  - " << ANSI_MAGENTA << name << ANSI_RESET << "\n";
+            }
+        }
+    }
+
+    char* homeDir = getenv("USERPROFILE");
+    std::cout << ANSI_BOLD_GREEN << "Home Directory : " << ANSI_RESET << (homeDir ? homeDir : "N/A") << "\n";
+
+    char profileDir[MAX_PATH];
+    DWORD profileLen = MAX_PATH;
+    if (GetUserProfileDirectoryA(token, profileDir, &profileLen)) {
+        std::cout << ANSI_BOLD_GREEN << "Profile Dir    : " << ANSI_RESET << profileDir << "\n";
+    }
+    else {
+        std::cout << ANSI_BOLD_GREEN << "Profile Dir    : " << ANSI_RESET << "N/A\n";
+    }
+
+    DWORD sessionId = WTSGetActiveConsoleSessionId();
+    WTS_CONNECTSTATE_CLASS* pState = nullptr;
+    DWORD bytesReturned = 0;
+    if (WTSQuerySessionInformationA(WTS_CURRENT_SERVER_HANDLE, sessionId, WTSConnectState, (LPSTR*)&pState, &bytesReturned)) {
+        std::cout << ANSI_BOLD_GREEN << "Session Type  : " << ANSI_RESET;
+        switch (*pState) {
+            case WTSActive: std::cout << "Active\n"; break;
+            case WTSConnected: std::cout << "Connected\n"; break;
+            case WTSConnectQuery: std::cout << "ConnectQuery\n"; break;
+            case WTSShadow: std::cout << "Shadow\n"; break;
+            case WTSDisconnected: std::cout << "Disconnected\n"; break;
+            case WTSIdle: std::cout << "Idle\n"; break;
+            case WTSListen: std::cout << "Listen\n"; break;
+            case WTSReset: std::cout << "Reset\n"; break;
+            case WTSDown: std::cout << "Down\n"; break;
+            case WTSInit: std::cout << "Init\n"; break;
+            default: std::cout << "Unknown\n"; break;
+        }
+        WTSFreeMemory(pState);
+    }
+    else {
+        std::cout << ANSI_BOLD_GREEN << "Session Type  : " << ANSI_RESET << "Unknown\n";
+    }
+
+    char computerName[MAX_COMPUTERNAME_LENGTH + 1];
+    DWORD compLen = sizeof(computerName);
+    if (GetComputerNameA(computerName, &compLen)) {
+        std::cout << ANSI_BOLD_GREEN << "Machine Name  : " << ANSI_RESET << computerName << "\n";
+    }
+
+    CloseHandle(token);
+    free(pSid);
+    if (sidString) LocalFree(sidString);
+}
+
+void CmdWhoAmI(const std::string& args) {
+    // Get username
+    char username[UNLEN + 1];
+    DWORD username_len = UNLEN + 1;
+    if (GetUserNameA(username, &username_len)) {
+        std::cout << "Username: " << username << "\n";
+    } else {
+        std::cerr << "Failed to get username.\n";
+        return;
+    }
+
+    if (args != "-ext")
+        return;
+
+    // Open process token
+    HANDLE hToken = nullptr;
+    if (!OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &hToken)) {
+        std::cerr << "Failed to open process token.\n";
+        return;
+    }
+
+    // Get SID
+    DWORD len = 0;
+    GetTokenInformation(hToken, TokenUser, nullptr, 0, &len);
+    std::vector<BYTE> buffer(len);
+    if (!GetTokenInformation(hToken, TokenUser, buffer.data(), len, &len)) {
+        std::cerr << "Failed to get token info.\n";
+        CloseHandle(hToken);
+        return;
+    }
+
+    PSID sid = reinterpret_cast<PTOKEN_USER>(buffer.data())->User.Sid;
+    LPSTR sidStr = nullptr;
+    if (ConvertSidToStringSidA(sid, &sidStr)) {
+        std::cout << "SID: " << sidStr << "\n";
+        LocalFree(sidStr);
+    } else {
+        std::cerr << "Failed to convert SID.\n";
+    }
+
+    // Get integrity level
+    len = 0;
+    GetTokenInformation(hToken, TokenIntegrityLevel, nullptr, 0, &len);
+    std::vector<BYTE> levelBuffer(len);
+    if (GetTokenInformation(hToken, TokenIntegrityLevel, levelBuffer.data(), len, &len)) {
+        PTOKEN_MANDATORY_LABEL pLabel = reinterpret_cast<PTOKEN_MANDATORY_LABEL>(levelBuffer.data());
+        DWORD level = *GetSidSubAuthority(pLabel->Label.Sid, 0);
+
+        std::string integrity;
+        if (level == SECURITY_MANDATORY_LOW_RID)
+            integrity = "Low";
+        else if (level >= SECURITY_MANDATORY_MEDIUM_RID && level < SECURITY_MANDATORY_HIGH_RID)
+            integrity = "Medium";
+        else if (level >= SECURITY_MANDATORY_HIGH_RID && level < SECURITY_MANDATORY_SYSTEM_RID)
+            integrity = "High";
+        else if (level >= SECURITY_MANDATORY_SYSTEM_RID)
+            integrity = "System";
+
+        std::cout << "Integrity Level: " << integrity << "\n";
+    } else {
+        std::cerr << "Failed to get integrity level.\n";
+    }
+
+    BOOL isAdmin = FALSE;
+    CheckTokenMembership(nullptr, (PSID)LocalAlloc(LPTR, SECURITY_MAX_SID_SIZE), &isAdmin);
+    std::cout << "Admin: " << (IsUserAnAdmin() ? "Yes" : "No") << "\n";
+
+    CloseHandle(hToken);
 }
 
 
@@ -2010,7 +2629,6 @@ void SecureOverwriteFile(const std::string& filename, int passes, bool useRandom
 
 void CmdFZap(const std::string& args)
 {
-    // Parse arguments from args string: filename [passes] [zero|random]
     std::istringstream iss(args);
     std::vector<std::string> tokens;
     for (std::string token; iss >> token;)
@@ -2023,8 +2641,8 @@ void CmdFZap(const std::string& args)
     }
 
     std::string filename = tokens[0];
-    int passes = 3;  // default passes
-    bool useRandom = false; // default overwrite with zeros
+    int passes = 3;  
+    bool useRandom = false;
 
     if (tokens.size() > 1)
     {
@@ -2032,7 +2650,7 @@ void CmdFZap(const std::string& args)
         {
             passes = std::stoi(tokens[1]);
             if (passes < 1) passes = 1;
-            if (passes > 10) passes = 10; // limit max passes for sanity
+            if (passes > 10) passes = 10;
         }
         catch (...)
         {
@@ -2261,260 +2879,197 @@ void CmdWhereami(const std::string&) {
 }
 
 void CmdSysinfo(const std::string&) {
-    SYSTEM_INFO si;
-    GetSystemInfo(&si);
+    // --- Native System & Memory Info ---
+    SYSTEM_INFO si; GetSystemInfo(&si);
+    MEMORYSTATUSEX msx{ sizeof(msx) }; GlobalMemoryStatusEx(&msx);
+    auto bytesToGB = [](DWORDLONG b){ return b / 1024.0 / 1024 / 1024; };
 
-    OSVERSIONINFOEXA osvi = { 0 };
-    osvi.dwOSVersionInfoSize = sizeof(OSVERSIONINFOEXA);
-    if (!GetVersionExA(reinterpret_cast<OSVERSIONINFOA*>(&osvi))) {
-        std::cout << "Failed to get Windows version info." << std::endl;
-    }
+    // Color setup
+    const char* L = "\033[1;33m";
+    const char* V = "\033[1;36m";
+    const char* R = "\033[0m";
 
-    MEMORYSTATUSEX memStatus;
-    memStatus.dwLength = sizeof(MEMORYSTATUSEX);
-    GlobalMemoryStatusEx(&memStatus);
-
-    auto bytesToGB = [](DWORDLONG bytes) -> double {
-        return bytes / 1024.0 / 1024.0 / 1024.0;
-    };
-
-    const char* colorLabel = "\033[1;33m";    
-    const char* colorValue = "\033[1;36m";    
-    const char* colorReset = "\033[0m";
-
-    std::cout << colorLabel << "CPU cores: " << colorValue << si.dwNumberOfProcessors << colorReset << std::endl;
-
-    std::cout << colorLabel << "Processor type: " << colorValue << si.dwProcessorType << colorReset << std::endl;
-
-    std::cout << colorLabel << "Processor architecture: " << colorValue;
+    std::cout << L << "CPU cores (logical): " << V << si.dwNumberOfProcessors << R << "\n";
+    std::cout << L << "Processor type: " << V << si.dwProcessorType << R << "\n";
+    std::cout << L << "Processor arch: " << V;
     switch (si.wProcessorArchitecture) {
-        case PROCESSOR_ARCHITECTURE_AMD64: std::cout << "x64 (AMD or Intel)"; break;
+        case PROCESSOR_ARCHITECTURE_AMD64: std::cout << "x64"; break;
         case PROCESSOR_ARCHITECTURE_INTEL: std::cout << "x86"; break;
         case PROCESSOR_ARCHITECTURE_ARM: std::cout << "ARM"; break;
         case PROCESSOR_ARCHITECTURE_ARM64: std::cout << "ARM64"; break;
-        case PROCESSOR_ARCHITECTURE_IA64: std::cout << "Intel Itanium"; break;
         default: std::cout << "Unknown"; break;
     }
-    std::cout << colorReset << std::endl;
+    std::cout << R << "\n";
+    std::cout << L << "Processor level: " << V << si.wProcessorLevel << R << "\n";
+    std::cout << L << "Processor revision: " << V
+              << (si.wProcessorRevision >> 8) << "." << (si.wProcessorRevision & 0xFF) << R << "\n";
+    std::cout << L << "Page size: " << V << si.dwPageSize << " bytes" << R << "\n";
+    std::cout << L << "Allocation granularity: " << V << si.dwAllocationGranularity << " bytes" << R << "\n";
+    std::cout << L << "Min app addr: " << V << si.lpMinimumApplicationAddress << R << "\n";
+    std::cout << L << "Max app addr: " << V << si.lpMaximumApplicationAddress << R << "\n";
+    std::cout << L << "Active processor mask: " << V << "0x" << std::hex << si.dwActiveProcessorMask
+              << std::dec << R << "\n";
 
-    std::cout << colorLabel << "Processor level: " << colorValue << si.wProcessorLevel << colorReset << std::endl;
-    std::cout << colorLabel << "Processor revision: " << colorValue 
-              << (si.wProcessorRevision >> 8) << "." << (si.wProcessorRevision & 0xFF) << colorReset << std::endl;
+    std::cout << L << "Total physical memory: " << V << std::fixed << std::setprecision(2)
+              << bytesToGB(msx.ullTotalPhys) << " GB" << R << "\n";
+    std::cout << L << "Available physical memory: " << V << bytesToGB(msx.ullAvailPhys) << " GB" << R << "\n";
+    std::cout << L << "Total virtual memory: " << V << bytesToGB(msx.ullTotalVirtual) << " GB" << R << "\n";
+    std::cout << L << "Available virtual memory: " << V << bytesToGB(msx.ullAvailVirtual) << " GB" << R << "\n";
+    std::cout << L << "Memory load: " << V;
+    int load = msx.dwMemoryLoad;
+    std::cout << ((load >= 60) ? "\033[1;31m" : (load >= 40) ? "\033[1;33m" : "\033[1;32m")
+              << load << "%" << R << "\n";
 
-    std::cout << colorLabel << "Allocation granularity: " << colorValue << si.dwAllocationGranularity << " bytes" << colorReset << std::endl;
-    std::cout << colorLabel << "Page size: " << colorValue << si.dwPageSize << " bytes" << colorReset << std::endl;
+    // --- COM/WMI Setup ---
+    if (FAILED(CoInitializeEx(nullptr, COINIT_MULTITHREADED))) return;
+    CoInitializeSecurity(nullptr, -1, nullptr, nullptr,
+                         RPC_C_AUTHN_LEVEL_DEFAULT, RPC_C_IMP_LEVEL_IMPERSONATE,
+                         nullptr, EOAC_NONE, nullptr);
 
-    std::cout << colorLabel << "Min app addr: " << colorValue << si.lpMinimumApplicationAddress << colorReset << std::endl;
-    std::cout << colorLabel << "Max app addr: " << colorValue << si.lpMaximumApplicationAddress << colorReset << std::endl;
-
-    std::cout << colorLabel << "Active processor mask: " << colorValue 
-              << "0x" << std::hex << si.dwActiveProcessorMask << std::dec << colorReset << std::endl;
-
-    std::cout << colorLabel << "Windows version: " << colorValue 
-              << static_cast<int>(osvi.dwMajorVersion) << "." << static_cast<int>(osvi.dwMinorVersion) 
-              << " (Build " << osvi.dwBuildNumber << ")" << colorReset << std::endl;
-
-    std::cout << colorLabel << "Service Pack: " << colorValue << (osvi.szCSDVersion[0] ? osvi.szCSDVersion : "None") << colorReset << std::endl;
-
-    std::cout << colorLabel << "Suite mask: " << colorValue << osvi.wSuiteMask << colorReset << std::endl;
-
-    std::cout << colorLabel << "Product type: " << colorValue;
-    switch (osvi.wProductType) {
-        case VER_NT_WORKSTATION: std::cout << "Workstation"; break;
-        case VER_NT_DOMAIN_CONTROLLER: std::cout << "Domain Controller"; break;
-        case VER_NT_SERVER: std::cout << "Server"; break;
-        default: std::cout << "Unknown"; break;
-    }
-    std::cout << colorReset << std::endl;
-
-    std::cout << colorLabel << "Total physical memory: " << colorValue 
-              << std::fixed << std::setprecision(2) << bytesToGB(memStatus.ullTotalPhys) << " GB" << colorReset << std::endl;
-
-    std::cout << colorLabel << "Available physical memory: " << colorValue 
-              << std::fixed << std::setprecision(2) << bytesToGB(memStatus.ullAvailPhys) << " GB" << colorReset << std::endl;
-
-    int memLoad = memStatus.dwMemoryLoad;
-    const char* memColor = "\033[1;32m";  
-
-    if (memLoad >= 60) {
-        memColor = "\033[1;31m";  
-    } else if (memLoad >= 40) {
-        memColor = "\033[1;33m";  
+    IWbemLocator* locator = nullptr;
+    if (FAILED(CoCreateInstance(CLSID_WbemLocator, nullptr, CLSCTX_INPROC_SERVER,
+                                IID_IWbemLocator, (LPVOID*)&locator))) {
+        CoUninitialize(); return;
     }
 
-    std::cout << colorLabel << "Memory load: " << memColor << memLoad << "%" << colorReset << std::endl;
+    IWbemServices* svc = nullptr;
+    locator->ConnectServer(_bstr_t(L"ROOT\\CIMV2"), nullptr, nullptr, nullptr, 0, nullptr, nullptr, &svc);
+    CoSetProxyBlanket(svc, RPC_C_AUTHN_WINNT, RPC_C_AUTHZ_NONE, nullptr,
+                      RPC_C_AUTHN_LEVEL_CALL, RPC_C_IMP_LEVEL_IMPERSONATE,
+                      nullptr, EOAC_NONE);
 
-    // --- Begin CPU Temperature query via WMI ---
-
-    HRESULT hres;
-
-    // Initialize COM.
-    hres = CoInitializeEx(0, COINIT_MULTITHREADED);
-    if (FAILED(hres)) {
-        std::cout << colorLabel << "Failed to initialize COM library." << colorReset << std::endl;
-        return;
-    }
-
-    // Initialize security.
-    hres = CoInitializeSecurity(
-        NULL, 
-        -1,                          // COM negotiates service
-        NULL,                        // Authentication services
-        NULL,                        // Reserved
-        RPC_C_AUTHN_LEVEL_DEFAULT,   // Default authentication 
-        RPC_C_IMP_LEVEL_IMPERSONATE, // Default Impersonation  
-        NULL,                        // Authentication info
-        EOAC_NONE,                   // Additional capabilities 
-        NULL                         // Reserved
-    );
-
-    if (FAILED(hres)) {
-        std::cout << colorLabel << "Failed to initialize COM security." << colorReset << std::endl;
-        CoUninitialize();
-        return;
-    }
-
-    IWbemLocator *pLoc = NULL;
-
-    // Obtain the initial locator to WMI 
-    hres = CoCreateInstance(
-        CLSID_WbemLocator,             
-        0, 
-        CLSCTX_INPROC_SERVER, 
-        IID_IWbemLocator, (LPVOID *) &pLoc);
-
-    if (FAILED(hres)) {
-        std::cout << colorLabel << "Failed to create IWbemLocator object." << colorReset << std::endl;
-        CoUninitialize();
-        return;
-    }
-
-    IWbemServices *pSvc = NULL;
-
-    // Create BSTRs manually instead of _bstr_t
-    BSTR bstrNamespace = SysAllocString(L"ROOT\\CIMV2");
-    if (!bstrNamespace) {
-        std::cout << colorLabel << "Failed to allocate BSTR for namespace." << colorReset << std::endl;
-        pLoc->Release();
-        CoUninitialize();
-        return;
-    }
-
-    // Connect to WMI through the IWbemLocator::ConnectServer method
-    hres = pLoc->ConnectServer(
-        bstrNamespace, // WMI namespace
-        NULL,          // User name
-        NULL,          // User password
-        NULL,          // Locale 
-        0,             // Security flags
-        NULL,          // Authority
-        NULL,          // Context object
-        &pSvc          // IWbemServices proxy
-    );
-
-    SysFreeString(bstrNamespace);
-
-    if (FAILED(hres)) {
-        std::cout << colorLabel << "Could not connect to WMI namespace ROOT\\CIMV2." << colorReset << std::endl;
-        pLoc->Release();
-        CoUninitialize();
-        return;
-    }
-
-    // Set security levels on the proxy
-    hres = CoSetProxyBlanket(
-        pSvc,                        // Indicates the proxy to set
-        RPC_C_AUTHN_WINNT,           // RPC_C_AUTHN_xxx 
-        RPC_C_AUTHZ_NONE,            // RPC_C_AUTHZ_xxx 
-        NULL,                        // Server principal name 
-        RPC_C_AUTHN_LEVEL_CALL,      // RPC_C_AUTHN_LEVEL_xxx 
-        RPC_C_IMP_LEVEL_IMPERSONATE, // RPC_C_IMP_LEVEL_xxx
-        NULL,                        // client identity
-        EOAC_NONE                    // proxy capabilities 
-    );
-
-    if (FAILED(hres)) {
-        std::cout << colorLabel << "Could not set proxy blanket." << colorReset << std::endl;
-        pSvc->Release();
-        pLoc->Release();
-        CoUninitialize();
-        return;
-    }
-
-    IEnumWbemClassObject* pEnumerator = NULL;
-
-    // Manually allocate BSTRs for query strings
-    BSTR bstrQueryLanguage = SysAllocString(L"WQL");
-    BSTR bstrQuery = SysAllocString(L"SELECT CurrentTemperature FROM MSAcpi_ThermalZoneTemperature");
-
-
-    if (!bstrQueryLanguage || !bstrQuery) {
-        std::cout << colorLabel << "Failed to allocate BSTR for WMI query." << colorReset << std::endl;
-        if (bstrQueryLanguage) SysFreeString(bstrQueryLanguage);
-        if (bstrQuery) SysFreeString(bstrQuery);
-        pSvc->Release();
-        pLoc->Release();
-        CoUninitialize();
-        return;
-    }
-
-    // Query temperature sensors
-    hres = pSvc->ExecQuery(
-        bstrQueryLanguage,
-        bstrQuery,
-        WBEM_FLAG_FORWARD_ONLY | WBEM_FLAG_RETURN_IMMEDIATELY, 
-        NULL,
-        &pEnumerator);
-
-    SysFreeString(bstrQueryLanguage);
-    SysFreeString(bstrQuery);
-
-    if (FAILED(hres)) {
-        std::cout << colorLabel << "WMI query for CPU temperature failed." << colorReset << std::endl;
-        pSvc->Release();
-        pLoc->Release();
-        CoUninitialize();
-        return;
-    }
-
-    IWbemClassObject *pclsObj = NULL;
-    ULONG uReturn = 0;
-
-    bool temperatureFound = false;
-
-    while (pEnumerator) {
-        HRESULT hr = pEnumerator->Next(WBEM_INFINITE, 1, &pclsObj, &uReturn);
-        if (0 == uReturn) {
-            break;
-        }
-
-        VARIANT vtProp;
-
-        hr = pclsObj->Get(L"CurrentTemperature", 0, &vtProp, 0, 0);
-        if (SUCCEEDED(hr) && (vtProp.vt == VT_I4)) {
-            // Temperature in tenths of degrees Kelvin
-            int tempKelvinTenths = vtProp.intVal;
-            if (tempKelvinTenths > 0) {
-                // Convert tenths Kelvin to Celsius
-                double tempCelsius = (tempKelvinTenths / 10.0) - 273.15;
-                std::cout << colorLabel << "CPU temperature: " << colorValue 
-                          << std::fixed << std::setprecision(1) << tempCelsius << " °C" << colorReset << std::endl;
-                temperatureFound = true;
+    auto query = [&](const wchar_t* wql, auto&& fn) {
+        IEnumWbemClassObject* ent = nullptr;
+        if (SUCCEEDED(svc->ExecQuery(_bstr_t(L"WQL"), _bstr_t(wql),
+                                     WBEM_FLAG_FORWARD_ONLY | WBEM_FLAG_RETURN_IMMEDIATELY,
+                                     nullptr, &ent))) {
+            IWbemClassObject* obj = nullptr;
+            ULONG ret = 0;
+            while (ent && SUCCEEDED(ent->Next(WBEM_INFINITE, 1, &obj, &ret)) && ret) {
+                fn(obj);
+                obj->Release();
             }
+            ent->Release();
         }
-        VariantClear(&vtProp);
-        pclsObj->Release();
+    };
+
+    auto getProp = [&](IWbemClassObject* o, LPCWSTR p, const char* label) {
+        VARIANT v;
+        if (SUCCEEDED(o->Get(p, 0, &v, 0, 0)) && v.vt != VT_NULL && v.vt != VT_EMPTY) {
+            if (v.vt == VT_BSTR)
+                std::wcout << L << label << V << static_cast<const wchar_t*>(_bstr_t(v.bstrVal)) << R << L"\n";
+            else if (v.vt == VT_I4)
+                std::cout << L << label << V << v.intVal << R << "\n";
+            else if (v.vt == VT_UI4)
+                std::cout << L << label << V << v.uintVal << R << "\n";
+        }
+        VariantClear(&v);
+    };
+
+    // --- WMI Queries ---
+    OSVERSIONINFOEXW osvi = {};
+    osvi.dwOSVersionInfoSize = sizeof(osvi);
+    GetVersionExW(reinterpret_cast<LPOSVERSIONINFOW>(&osvi));
+    std::cout << L << "Win version (major.minor.build): " << V
+              << osvi.dwMajorVersion << "." << osvi.dwMinorVersion
+              << " (Build " << osvi.dwBuildNumber << ")" << R << "\n";
+    std::cout << L << "Service Pack: " << V
+              << (osvi.szCSDVersion[0] ? osvi.szCSDVersion : L"None") << R << "\n";
+    std::cout << L << "Suite mask: " << V << osvi.wSuiteMask << R << "\n";
+    std::cout << L << "Product type: " << V;
+    switch(osvi.wProductType) {
+        case VER_NT_WORKSTATION: std::cout << "Workstation"; break;
+        case VER_NT_SERVER: std::cout << "Server"; break;
+        default: std::cout << "Other"; break;
+    }
+    std::cout << R << "\n";
+
+    query(L"SELECT * FROM Win32_ComputerSystem", [&](IWbemClassObject* o){
+        getProp(o, L"Manufacturer", "System Manufacturer: ");
+        getProp(o, L"Model", "System Model: ");
+        getProp(o, L"Name", "System Name: ");
+        getProp(o, L"SystemType", "System Type: ");
+    });
+
+    query(L"SELECT * FROM Win32_OperatingSystem", [&](IWbemClassObject* o){
+        getProp(o, L"Caption", "OS Name: ");
+        getProp(o, L"Version", "OS Version: ");
+        getProp(o, L"Description", "OS Description: ");
+        getProp(o, L"Manufacturer", "OS Manufacturer: ");
+        getProp(o, L"Locale", "Locale: ");
+        getProp(o, L"WindowsDirectory", "Windows Directory: ");
+        getProp(o, L"SystemDirectory", "System Directory: ");
+        getProp(o, L"BootDevice", "Boot Device: ");
+        getProp(o, L"InstallDate", "Install Date: ");
+        getProp(o, L"LastBootUpTime", "Last Boot Time: ");
+        getProp(o, L"TotalVisibleMemorySize", "Installed Physical Memory (KB): ");
+        getProp(o, L"FreePhysicalMemory", "Available Physical Memory (KB): ");
+        getProp(o, L"TotalVirtualMemorySize", "Total Virtual Memory (KB): ");
+        getProp(o, L"FreeVirtualMemory", "Available Virtual Memory (KB): ");
+        getProp(o, L"SizeStoredInPagingFiles", "Page File Size (KB): ");
+        getProp(o, L"PagingFiles", "Page File (directory): ");
+        getProp(o, L"SystemDirectory", "Hardware Abstraction Layer: ");
+        getProp(o, L"LocalDateTime", "Time Zone: ");
+        getProp(o, L"CurrentTimeZone", "Current Time Zone Offset (minutes): ");
+    });
+
+    query(L"SELECT * FROM Win32_BIOS", [&](IWbemClassObject* o){
+        getProp(o, L"BIOSVersion", "BIOS Version: ");
+        getProp(o, L"ReleaseDate", "BIOS Date: ");
+        getProp(o, L"SMBIOSBIOSVersion", "SMBIOS Version: ");
+        getProp(o, L"EmbeddedControllerMajorVersion", "Embedded Controller Version: ");
+        getProp(o, L"BIOSMode", "BIOS Mode: ");
+    });
+
+    query(L"SELECT * FROM Win32_BaseBoard", [&](IWbemClassObject* o){
+        getProp(o, L"Manufacturer", "BaseBoard Manufacturer: ");
+        getProp(o, L"Product", "BaseBoard Product: ");
+        getProp(o, L"Version", "BaseBoard Version: ");
+        getProp(o, L"SerialNumber", "BaseBoard Serial Number: ");
+        getProp(o, L"Model", "BaseBoard Model: ");
+    });
+
+    query(L"SELECT * FROM Win32_Processor", [&](IWbemClassObject* o){
+        getProp(o, L"Name", "Processor: ");
+        getProp(o, L"NumberOfCores", "Physical Cores: ");
+        getProp(o, L"NumberOfLogicalProcessors", "Logical Processors: ");
+        getProp(o, L"MaxClockSpeed", "Max Clock Speed (MHz): ");
+        getProp(o, L"CurrentClockSpeed", "Current Clock Speed (MHz): ");
+        getProp(o, L"Architecture", "Architecture: ");
+        getProp(o, L"AddressWidth", "Address Width: ");
+    });
+
+    query(L"SELECT * FROM Win32_DeviceGuard", [&](IWbemClassObject* o){
+        getProp(o, L"VirtualizationBasedSecurityStatus", "VBS State: ");
+        getProp(o, L"RequiredSecurityProperties", "VBS Required Security Properties: ");
+        getProp(o, L"AvailableSecurityProperties", "VBS Available Security Properties: ");
+        getProp(o, L"SecurityServicesConfigured", "VBS Services Configured: ");
+        getProp(o, L"SecurityServicesRunning", "VBS Services Running: ");
+        getProp(o, L"PCR7Configuration", "PCR7 Configuration: ");
+    });
+
+    query(L"SELECT * FROM Win32_StartupCommand WHERE Name LIKE '%defender%'", [&](IWbemClassObject* o){
+        getProp(o, L"Caption", "WinDef App Policy: ");
+        getProp(o, L"Command", "WinDef Command: ");
+        getProp(o, L"Location", "WinDef Location: ");
+    });
+
+    // SecureBoot & DMA via registry
+    HKEY h;
+    DWORD v, s = sizeof(v);
+    if (RegOpenKeyEx(HKEY_LOCAL_MACHINE,
+       L"SYSTEM\\CurrentControlSet\\Control\\DeviceGuard", 0, KEY_READ, &h) == ERROR_SUCCESS) {
+        if (RegQueryValueEx(h, L"EnableVirtualizationBasedSecurity", nullptr, nullptr, (LPBYTE)&v, &s) == ERROR_SUCCESS) {
+            std::cout << L << "Kernel DMA Protection / VBS enabled: " << V << (v ? "Yes" : "No") << R << "\n";
+        }
+        RegCloseKey(h);
     }
 
-    if (!temperatureFound) {
-        std::cout << colorLabel << "CPU temperature: " << colorValue << "Not available" << colorReset << std::endl;
-    }
-
-    pEnumerator->Release();
-    pSvc->Release();
-    pLoc->Release();
+    svc->Release();
+    locator->Release();
     CoUninitialize();
 }
+
 
 bool InitializeCOM() {
     HRESULT hr = CoInitializeEx(0, COINIT_MULTITHREADED);
@@ -2820,14 +3375,12 @@ void CmdNetworkAdapters(const std::string& args) {
 
     BSTR wql = SysAllocString(L"WQL");
 
-    // Convert args (adapter name) from std::string to std::wstring
     std::wstring wArgs;
     if (!args.empty()) {
         int size_needed = MultiByteToWideChar(CP_UTF8, 0, args.c_str(), (int)args.size(), NULL, 0);
         wArgs.resize(size_needed);
         MultiByteToWideChar(CP_UTF8, 0, args.c_str(), (int)args.size(), &wArgs[0], size_needed);
 
-        // Escape single quotes for WQL (replace ' with '')
         size_t pos = 0;
         while ((pos = wArgs.find(L'\'', pos)) != std::wstring::npos) {
             wArgs.replace(pos, 1, L"''");
@@ -2835,7 +3388,6 @@ void CmdNetworkAdapters(const std::string& args) {
         }
     }
 
-    // Compose query string:
     std::wstring queryStr = L"SELECT Name, Description, MACAddress, Manufacturer, NetConnectionStatus, Speed, AdapterType, DeviceID, PNPDeviceID, ServiceName FROM Win32_NetworkAdapter";
     if (!wArgs.empty()) {
         queryStr += L" WHERE Name = '" + wArgs + L"'";
@@ -3024,7 +3576,7 @@ void CmdLoadAvg(const std::string& args) {
               << loads[1] << ", "
               << loads[2] << std::endl;
 #else
-   std::cout << "Load average is not supported on Windows.\n";
+   std::cout << "Load average is not supported on Windows. Use winloadavg.\n";
 #endif
 }
 
@@ -3033,7 +3585,6 @@ void CmdWinLoadAvg(const std::string&) {
     PDH_HCOUNTER counter;
     PDH_FMT_COUNTERVALUE counterVal;
 
-    // Use nullptr and 0 for parameters to avoid conversion warnings
     if (PdhOpenQuery(nullptr, 0, &query) != ERROR_SUCCESS) {
         std::cout << "Failed to open PDH query.\n";
         return;
@@ -3046,7 +3597,7 @@ void CmdWinLoadAvg(const std::string&) {
     }
 
     PdhCollectQueryData(query);
-    Sleep(1000); // 1 second sample interval
+    Sleep(1000); 
     PdhCollectQueryData(query);
 
     if (PdhGetFormattedCounterValue(counter, PDH_FMT_DOUBLE, nullptr, &counterVal) != ERROR_SUCCESS) {
@@ -3059,6 +3610,9 @@ void CmdWinLoadAvg(const std::string&) {
 }
 
 
+
+
+
 void CmdVersion(const std::string&) {
     printf("Zephyr Version 1.0.2\n");
     printf("Update: Hop (cd) command added!!!\n");
@@ -3069,6 +3623,7 @@ void CmdVersion(const std::string&) {
     printf("Running on: %s %s\n", GetUsername().c_str(), GetHostname().c_str());
     printf("Current Directory: %s\n", GetCurrentDir().c_str());
     printf("Creator: %s\n", "MuerteSeguraZ");
+    
 }
 
 void CmdCuteMessage(const std::string&) {
@@ -3135,9 +3690,9 @@ std::string WStringToUTF8(const std::wstring& wstr) {
 
 void CmdLinkup(const std::string&) {
     ULONG bufferSize = 0;
-    DWORD result = GetAdaptersAddresses(AF_UNSPEC, GAA_FLAG_INCLUDE_PREFIX, nullptr, nullptr, &bufferSize);
+    DWORD result = GetAdaptersAddresses(AF_UNSPEC, GAA_FLAG_INCLUDE_PREFIX | GAA_FLAG_SKIP_ANYCAST | GAA_FLAG_SKIP_MULTICAST | GAA_FLAG_SKIP_FRIENDLY_NAME, nullptr, nullptr, &bufferSize);
     if (result != ERROR_BUFFER_OVERFLOW) {
-        std::cerr << "[linkup] Failed to get buffer size for adapters. Error: " << result << std::endl;
+        std::cerr << ANSI_RED << "[linkup] Failed to get buffer size for adapters. Error: " << result << ANSI_RESET << std::endl;
         return;
     }
 
@@ -3146,21 +3701,36 @@ void CmdLinkup(const std::string&) {
 
     result = GetAdaptersAddresses(AF_UNSPEC, GAA_FLAG_INCLUDE_PREFIX, nullptr, adapterAddresses, &bufferSize);
     if (result != NO_ERROR) {
-        std::cerr << "[linkup] Failed to get adapter info. Error: " << result << std::endl;
+        std::cerr << ANSI_RED << "[linkup] Failed to get adapter info. Error: " << result << ANSI_RESET << std::endl;
         return;
     }
 
-    std::cout << "[linkup] Active Network Interfaces:\n";
+    std::cout << ANSI_BOLD_GREEN << "[linkup] Active Network Interfaces:" << ANSI_RESET << "\n";
 
     for (IP_ADAPTER_ADDRESSES* adapter = adapterAddresses; adapter != nullptr; adapter = adapter->Next) {
         if (adapter->OperStatus != IfOperStatusUp) continue;
 
         std::string name = adapter->FriendlyName ? WStringToUTF8(adapter->FriendlyName) : "(unknown)";
         std::string desc = adapter->Description ? WStringToUTF8(adapter->Description) : "(unknown)";
-        std::cout << "  ↪ Interface Name: " << name << "\n";
-        std::cout << "     Network Name: " << desc << "\n";
 
-        std::cout << "     MAC: ";
+        // Interface Type
+        std::string ifType;
+        switch (adapter->IfType) {
+            case IF_TYPE_ETHERNET_CSMACD: ifType = "Ethernet"; break;
+            case IF_TYPE_IEEE80211:       ifType = "Wi-Fi"; break;
+            case MIB_IF_TYPE_LOOPBACK:    ifType = "Loopback"; break; // fixed here
+            case IF_TYPE_TUNNEL:          ifType = "Tunnel"; break;
+            case IF_TYPE_PPP:             ifType = "PPP"; break;
+            case IF_TYPE_SLIP:            ifType = "SLIP"; break;
+            default:                     ifType = "Other"; break;
+        }
+
+        std::cout << ANSI_YELLOW << "============================================================" << ANSI_RESET << "\n";
+        std::cout << ANSI_BOLD_GREEN << "↪ Interface Name: " << ANSI_RESET << name << "\n";
+        std::cout << ANSI_BOLD_GREEN << "  Network Name:   " << ANSI_RESET << desc << "\n";
+        std::cout << ANSI_BOLD_GREEN << "  Interface Type: " << ANSI_RESET << ifType << "\n";
+
+        std::cout << ANSI_BOLD_GREEN << "  MAC: " << ANSI_RESET;
         if (adapter->PhysicalAddressLength == 0) {
             std::cout << "(none)\n";
         } else {
@@ -3177,20 +3747,23 @@ void CmdLinkup(const std::string&) {
 
             char ipStr[INET6_ADDRSTRLEN] = {0};
             void* addrPtr = nullptr;
+            bool isIPv4 = false;
 
             if (ua->Address.lpSockaddr->sa_family == AF_INET) {
                 sockaddr_in* ipv4 = reinterpret_cast<sockaddr_in*>(ua->Address.lpSockaddr);
                 addrPtr = &(ipv4->sin_addr);
+                isIPv4 = true;
             } else if (ua->Address.lpSockaddr->sa_family == AF_INET6) {
                 sockaddr_in6* ipv6 = reinterpret_cast<sockaddr_in6*>(ua->Address.lpSockaddr);
                 addrPtr = &(ipv6->sin6_addr);
             }
 
             if (addrPtr && inet_ntop(ua->Address.lpSockaddr->sa_family, addrPtr, ipStr, sizeof(ipStr))) {
-                std::cout << "     IP: " << ipStr << "\n";
                 hasIP = true;
+                if (isIPv4) {
+                    std::cout << ANSI_BOLD_GREEN << "  IP Address:     " << ANSI_RESET << ipStr << "\n";
 
-                if (ua->Address.lpSockaddr->sa_family == AF_INET) {
+                    // Subnet Mask from prefix length
                     uint8_t prefix = ua->OnLinkPrefixLength;
                     if (prefix <= 32) {
                         uint32_t mask = (prefix == 0) ? 0 : (~0U << (32 - prefix));
@@ -3198,19 +3771,86 @@ void CmdLinkup(const std::string&) {
                         maskAddr.s_addr = htonl(mask);
                         char maskStr[INET_ADDRSTRLEN] = {};
                         inet_ntop(AF_INET, &maskAddr, maskStr, sizeof(maskStr));
-                        std::cout << "     Subnet Mask: " << maskStr << "\n";
+                        std::cout << ANSI_BOLD_GREEN << "  Subnet Mask:    " << ANSI_RESET << maskStr << "\n";
                     }
-                } else if (ua->Address.lpSockaddr->sa_family == AF_INET6) {
-                    std::cout << "     Subnet Prefix Length: /" << static_cast<int>(ua->OnLinkPrefixLength) << "\n";
+                } else {
+                    std::cout << ANSI_BOLD_GREEN << "  IP Address:     " << ANSI_RESET << ipStr << "\n";
+                    std::cout << ANSI_BOLD_GREEN << "  Subnet Prefix:  " << ANSI_RESET << "/" << static_cast<int>(ua->OnLinkPrefixLength) << "\n";
                 }
             }
         }
 
-        if (!hasIP)
-            std::cout << "     IP: (none assigned)\n";
+        if (!hasIP) {
+            std::cout << ANSI_BOLD_GREEN << "  IP Address:     " << ANSI_RESET << "(none assigned)\n";
+        }
+
+        // DHCPv4 Enabled?
+        std::cout << ANSI_BOLD_GREEN << "  DHCPv4:         " << ANSI_RESET
+                  << ((adapter->Flags & IP_ADAPTER_DHCP_ENABLED) ? "Enabled" : "Disabled") << "\n";
+
+        // DHCPv4 Server Address (extract manually from SOCKET_ADDRESS)
+        if (adapter->Dhcpv4Server.lpSockaddr) {
+            char dhcpServerStr[INET_ADDRSTRLEN] = {};
+            if (adapter->Dhcpv4Server.lpSockaddr->sa_family == AF_INET) {
+                sockaddr_in* dhcpv4 = reinterpret_cast<sockaddr_in*>(adapter->Dhcpv4Server.lpSockaddr);
+                inet_ntop(AF_INET, &(dhcpv4->sin_addr), dhcpServerStr, sizeof(dhcpServerStr));
+                std::cout << ANSI_BOLD_GREEN << "  DHCPv4 Server:  " << ANSI_RESET << dhcpServerStr << "\n";
+            }
+            // You could add IPv6 DHCP server similarly if needed
+        }
+
+        // DHCPv6 Enabled? (Flags mask might differ per Windows SDK, fallback to 0 if undefined)
+        bool dhcpv6_enabled = false;
+#ifdef IP_ADAPTER_DHCPV6_ENABLED
+        dhcpv6_enabled = (adapter->Flags & IP_ADAPTER_DHCPV6_ENABLED) != 0;
+#endif
+        std::cout << ANSI_BOLD_GREEN << "  DHCPv6:         " << ANSI_RESET
+                  << (dhcpv6_enabled ? "Enabled" : "Disabled") << "\n";
+
+        // Gateway Address(es)
+        if (adapter->FirstGatewayAddress) {
+            for (IP_ADAPTER_GATEWAY_ADDRESS* gw = adapter->FirstGatewayAddress; gw != nullptr; gw = gw->Next) {
+                if (gw->Address.lpSockaddr) {
+                    char gwStr[INET6_ADDRSTRLEN] = {};
+                    if (gw->Address.lpSockaddr->sa_family == AF_INET) {
+                        sockaddr_in* gw4 = reinterpret_cast<sockaddr_in*>(gw->Address.lpSockaddr);
+                        inet_ntop(AF_INET, &(gw4->sin_addr), gwStr, sizeof(gwStr));
+                    } else if (gw->Address.lpSockaddr->sa_family == AF_INET6) {
+                        sockaddr_in6* gw6 = reinterpret_cast<sockaddr_in6*>(gw->Address.lpSockaddr);
+                        inet_ntop(AF_INET6, &(gw6->sin6_addr), gwStr, sizeof(gwStr));
+                    }
+                    std::cout << ANSI_BOLD_GREEN << "  Gateway:        " << ANSI_RESET << gwStr << "\n";
+                }
+            }
+        }
+
+        // DNS Servers
+        if (adapter->FirstDnsServerAddress) {
+            std::cout << ANSI_BOLD_GREEN << "  DNS Servers:    " << ANSI_RESET;
+            IP_ADAPTER_DNS_SERVER_ADDRESS* dns = adapter->FirstDnsServerAddress;
+            bool firstDns = true;
+            for (; dns != nullptr; dns = dns->Next) {
+                if (dns->Address.lpSockaddr) {
+                    char dnsStr[INET6_ADDRSTRLEN] = {};
+                    if (dns->Address.lpSockaddr->sa_family == AF_INET) {
+                        sockaddr_in* dns4 = reinterpret_cast<sockaddr_in*>(dns->Address.lpSockaddr);
+                        inet_ntop(AF_INET, &(dns4->sin_addr), dnsStr, sizeof(dnsStr));
+                    } else if (dns->Address.lpSockaddr->sa_family == AF_INET6) {
+                        sockaddr_in6* dns6 = reinterpret_cast<sockaddr_in6*>(dns->Address.lpSockaddr);
+                        inet_ntop(AF_INET6, &(dns6->sin6_addr), dnsStr, sizeof(dnsStr));
+                    }
+                    if (!firstDns) std::cout << ", ";
+                    std::cout << dnsStr;
+                    firstDns = false;
+                }
+            }
+            std::cout << "\n";
+        }
 
         std::cout << "\n";
     }
+
+    std::cout << ANSI_YELLOW << "============================================================" << ANSI_RESET << "\n";
 }
 
 void CmdDiskInfo(const std::string& args) {
@@ -3284,11 +3924,9 @@ void PrintStartupFolderApps(const std::string& path, const std::string& scope) {
 }
 
 void CmdStartupApps(const std::string&) {
-    // Registry-based startup entries
     PrintRegistryStartupApps(HKEY_CURRENT_USER, "Software\\Microsoft\\Windows\\CurrentVersion\\Run", "Current User");
     PrintRegistryStartupApps(HKEY_LOCAL_MACHINE, "Software\\Microsoft\\Windows\\CurrentVersion\\Run", "All Users");
 
-    // Folder-based startup entries
     char path[MAX_PATH];
 
     if (SUCCEEDED(SHGetFolderPathA(nullptr, CSIDL_STARTUP, nullptr, 0, path))) {
@@ -3647,13 +4285,11 @@ void CmdGrep(const std::string& args) {
     std::istringstream iss(args);
     std::string token;
 
-    // Flags
-    bool flag_i = false; // case-insensitive
-    bool flag_v = false; // invert match
-    bool flag_n = false; // show line numbers
-    bool flag_c = false; // count matches only
+    bool flag_i = false;
+    bool flag_v = false; 
+    bool flag_n = false; 
+    bool flag_c = false; 
 
-    // Parse flags
     while (iss >> token && !token.empty() && token[0] == '-') {
         for (size_t i = 1; i < token.size(); ++i) {
             switch (token[i]) {
@@ -3668,7 +4304,6 @@ void CmdGrep(const std::string& args) {
         }
     }
 
-    // After flags, token contains the pattern
     std::string pattern = token;
     std::string filename;
     iss >> filename;
@@ -3678,7 +4313,6 @@ void CmdGrep(const std::string& args) {
         return;
     }
 
-    // Prepare pattern for case-insensitive comparison
     std::string pattern_cmp = pattern;
     if (flag_i) {
         std::transform(pattern_cmp.begin(), pattern_cmp.end(), pattern_cmp.begin(),
@@ -3740,7 +4374,6 @@ void CmdSed(const std::string& args) {
         return;
     }
 
-    // Extract delimiter (usually '/')
     char delim = cmd[1];
     size_t secondDelim = cmd.find(delim, 2);
     if (secondDelim == std::string::npos) {
@@ -3756,11 +4389,10 @@ void CmdSed(const std::string& args) {
     std::string oldStr = cmd.substr(2, secondDelim - 2);
     std::string newStr = cmd.substr(secondDelim + 1, thirdDelim - secondDelim - 1);
 
-    // Flags are optional, after third delimiter
     std::string flags = cmd.substr(thirdDelim + 1);
 
     bool caseInsensitive = false;
-    bool globalReplace = true; // Your code already replaces all occurrences per line
+    bool globalReplace = true;
 
     for (char f : flags) {
         if (f == 'i') caseInsensitive = true;
@@ -3771,14 +4403,12 @@ void CmdSed(const std::string& args) {
         }
     }
 
-    // Open input file
     std::ifstream inFile(filename);
     if (!inFile.is_open()) {
         std::cout << "Cannot open file: " << filename << std::endl;
         return;
     }
 
-    // Temporary output file
     std::string tempFilename = filename + ".sedtmp";
     std::ofstream outFile(tempFilename);
     if (!outFile.is_open()) {
@@ -3786,7 +4416,6 @@ void CmdSed(const std::string& args) {
         return;
     }
 
-    // Helper lambda for case-insensitive find
     auto find_ci = [](const std::string& haystack, const std::string& needle, size_t pos = 0) -> size_t {
         auto it = std::search(
             haystack.begin() + pos, haystack.end(),
@@ -3967,6 +4596,88 @@ void CmdGroups(const std::string& args) {
     }
 }
 
+void CmdClipCopy(const std::string& args) {
+    if (args.empty()) {
+        std::cerr << "Usage: clipcopy <file> or clipcopy \"text\"\n";
+        return;
+    }
+
+    std::string textToCopy;
+
+    // Check if it's a file path
+    std::ifstream file(args, std::ios::in | std::ios::binary);
+    if (file.is_open()) {
+        std::ostringstream ss;
+        ss << file.rdbuf();
+        textToCopy = ss.str();
+        file.close();
+    } else {
+        // It's not a file; assume direct string input.
+        textToCopy = args;
+
+        // Remove surrounding quotes if present
+        if (!textToCopy.empty() && textToCopy.front() == '"' && textToCopy.back() == '"') {
+            textToCopy = textToCopy.substr(1, textToCopy.size() - 2);
+        }
+    }
+
+    if (textToCopy.empty()) {
+        std::cerr << "Nothing to copy.\n";
+        return;
+    }
+
+    // Convert to wide string (for CF_UNICODETEXT)
+    int wideLen = MultiByteToWideChar(CP_UTF8, 0, textToCopy.c_str(), -1, nullptr, 0);
+    if (wideLen <= 0) {
+        std::cerr << "Failed to convert text to wide string.\n";
+        return;
+    }
+
+    HGLOBAL hMem = GlobalAlloc(GMEM_MOVEABLE, wideLen * sizeof(wchar_t));
+    if (!hMem) {
+        std::cerr << "Failed to allocate global memory.\n";
+        return;
+    }
+
+    wchar_t* pMem = static_cast<wchar_t*>(GlobalLock(hMem));
+    if (!pMem) {
+        std::cerr << "Failed to lock global memory.\n";
+        GlobalFree(hMem);
+        return;
+    }
+
+    MultiByteToWideChar(CP_UTF8, 0, textToCopy.c_str(), -1, pMem, wideLen);
+    GlobalUnlock(hMem);
+
+    // Retry opening the clipboard for up to 500ms
+    bool opened = false;
+    for (int i = 0; i < 5; ++i) {
+        if (OpenClipboard(nullptr)) {
+            opened = true;
+            break;
+        }
+        Sleep(100);
+    }
+
+    if (!opened) {
+        std::cerr << "Failed to open clipboard after multiple attempts.\n";
+        GlobalFree(hMem);
+        return;
+    }
+
+    EmptyClipboard();
+    if (!SetClipboardData(CF_UNICODETEXT, hMem)) {
+        std::cerr << "Failed to set clipboard data.\n";
+        GlobalFree(hMem);
+        CloseClipboard();
+        return;
+    }
+
+    CloseClipboard();
+    std::cout << "Copied to clipboard.\n";
+}
+
+
 bool RunBatchIfExists(const std::string& command, const std::string& args) {
     namespace fs = std::filesystem;
 
@@ -4031,7 +4742,10 @@ void CmdHelp(const std::string&) {
     "| procmon             - Monitor running processes and their memory usage                           |\n"
     "| cpuinfo             - Show CPU info                                                              |\n"
     "| gpuinfo             - Show GPU info                                                              |\n"
+    "| raminfo             - Show detailed RAM, page file, and virtual memory stats                     |\n"
     "| biosinfo            - Show BIOS info                                                             |\n"
+    "| userinfo            - Basic details about the current user’s identity and its permissions.       |\n"
+    "| whoami [-ext]       - Show current user info, with extended details if -ext is used.             |\n"
     "| uptime              - Show system uptime                                                         |\n"
     "| netstat             - Show network connections and listening ports                               |\n"
     "| ntwkadp             - Shows adapters and their info. Show single info by name (ntwkadp (name))   |\n"
@@ -4061,8 +4775,16 @@ void CmdHelp(const std::string&) {
     "| startupapps         - Displays a list of startup apps.                                           |\n"
     "| fmeta               - Display detailed metadata and hash of a file                               |\n"
     "| fhash <file>        - Calculate and display the hash of a file (MD5, SHA1, SHA256)               |\n"
+    "| fsize <bytes>       - Convert bytes to human-readable format (KB, MB, GB, TB)                    |\n"
     "| groups              - Show groups the current user belongs to                                    |\n"
     "| hexdump <file>      - Display file contents in hex format                                        |\n"
+    "| jobs                - Show all running jobs in the shell                                         |\n"
+    "| startjob <command>  - Start a new job in the background and display its ID.                      |\n"
+    "| stopjob <job_id>    - Stop a running job by its ID.                                              |\n"
+    "| bgjob               - Move a job to the background by ID                                         |\n"
+    "| fgjob               - Move a job to the foreground by ID                                         |\n"
+    "| clipcopy <file|text>- Copy file contents or raw text to the clipboard                           |\n"
+    "| inspect             - Run this to get the inspect help command."
     "| You can also run .bat files. Only type the name if its in the current directory.                 |\n"
     "========================================================================================================================\n"
     "| grep - grep searches for patterns in files; flags modify behavior like case (-i), invert (-v), line numbers (-n), and recursion (-r).\n"
