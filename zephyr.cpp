@@ -65,6 +65,7 @@
 
 
 #include "bigcommands/inspect.h"
+#include "list/list.h"
 // Link with necessary libraries
 #pragma comment(lib, "iphlpapi.lib")
 #pragma comment(lib, "ws2_32.lib")
@@ -231,7 +232,6 @@ void CmdHttpPost(const std::string& args);
 void CmdHttpHeader(const std::string& args);
 void CmdScanWrapper(const std::string& args);
 void CmdCheckAdminWrapper(const std::string& args);
-void CmdListUsersWrapper(const std::string& args);
 void CmdStat(const std::string& args);
 void CmdFMeta(const std::string& args);
 void CmdFHash(const std::string& args);
@@ -300,6 +300,49 @@ void CmdInspect(const std::string& args) {
     }
 }
 
+void CmdUserMgmt(const std::string& args) {
+    std::istringstream iss(args);
+    std::string subcmd;
+    iss >> subcmd;
+
+    std::string remainingArgs;
+    std::getline(iss, remainingArgs);
+    remainingArgs.erase(0, remainingArgs.find_first_not_of(" \t"));
+
+if (subcmd == "listusers") {
+    CmdListUsers(remainingArgs);
+} else if (subcmd == "listgroups" || subcmd == "listlocalgroups") {
+    CmdListGroups(remainingArgs);
+} else if (subcmd == "listloggedin") {
+    CmdListLoggedIn(remainingArgs);
+} else if (subcmd == "listadmins") {
+    CmdListAdmins(remainingArgs);
+} else if (subcmd == "listprofiles") {
+    CmdListProfiles(remainingArgs);
+} else if (subcmd == "listdomains") {
+    CmdListDomains(remainingArgs);
+} else if (subcmd == "listprocessusers") {
+    CmdListProcessUsers(remainingArgs);
+} else if (subcmd == "listprivileges") {
+    CmdListPrivileges(remainingArgs);
+} else if (subcmd == "listuserdetails") {
+    CmdListUserDetails(remainingArgs);
+} else if (subcmd == "listnetworkusers") {
+    CmdListNetworkUsers(remainingArgs);
+} else if (subcmd == "listlocalusers") {
+    CmdListLocalUsers(remainingArgs);
+} else if (subcmd == "listgroupmembers") {
+    CmdListGroupMembers(remainingArgs);
+} else if (subcmd == "listremotesessions") {
+    CmdListRemoteSessions(remainingArgs);
+} else if (subcmd == "help" || subcmd == "?") {
+    CmdListHelp(remainingArgs);  
+} else if (subcmd == "usermgmthelp" || subcmd.empty()) {
+    CmdListHelp("");  
+} else {
+    std::cerr << "Usage: usermgmt <listusers|listgroups|listloggedin|listadmins|listprofiles|listdomains|listprocessusers|listprivileges|listuserdetails|listlocalusers|listnetworkusers|listlocalgroups|listgroupmembers|listremotesessions|help>\n";
+    }
+ }
 
 std::unordered_map<std::string, std::function<void(const std::string&)>> commands = {
     {"list", CmdList}, {"tree", CmdTreeList}, {"send", CmdSend}, {"zap", CmdZap}, {"fzap", CmdFZap}, {"fhash", CmdFHash}, {"shift", CmdShift},
@@ -317,13 +360,13 @@ std::unordered_map<std::string, std::function<void(const std::string&)>> command
     {"cpuinfo", CmdCpuInfo}, {"uptime", CmdUptime}, {"netstat", CmdNetstat}, {"mirror", CmdMirror}, 
     {"tempclean", CmdTempClean}, {"killtree", CmdKillTree}, {"pingtest", CmdPingTest}, 
     {"get", CmdHttpGet}, {"post", CmdHttpPost}, {"header", CmdHttpHeader}, {"scan", CmdScanWrapper}, {"hop", CmdHop}, {"stat", CmdStat}, {"fmeta", CmdFMeta}, {"fsize", CmdFSize},
-    {"checkadmin", CmdCheckAdminWrapper}, {"listusers", CmdListUsersWrapper}, {"dnsflush", CmdDnsFlush},
+    {"checkadmin", CmdCheckAdminWrapper}, {"dnsflush", CmdDnsFlush},
     {"firewall", CmdFirewallStatus}, {"drives", CmdDrives}, {"smart", CmdSmartStatus}, {"lsusb", CmdLsusb},
     {"tar", CmdTar}, {"gzip", CmdGzip}, {"gunzip", CmdGunzip}, {"zip", CmdZip}, {"unzip", CmdUnzip}, 
     {"grep", CmdGrep}, {"sed", CmdSed}, {"basename", CmdBasename}, {"head", CmdHead}, {"tail", CmdTail}, {"wc", CmdWc}, {"loadavg", CmdLoadAvg}, {"winloadavg", CmdWinLoadAvg},
     {"mounts", CmdMounts}, {"gpuinfo", CmdGPUInfo}, {"biosinfo", CmdBIOSInfo}, {"raminfo", CmdRamInfo}, {"userinfo", CmdUserInfo}, {"whoami", CmdWhoAmI}, {"groups", CmdGroups}, {"hexdump", CmdHexdump},
     {"jobs", CmdJobs}, {"bgjob", CmdBgJob}, {"fgjob", CmdFgJob}, {"stopjob", CmdStopJob}, {"startjob", CmdStartJob}, {"clipcopy", CmdClipCopy},
-    {"inspect", CmdInspect}
+    {"inspect", CmdInspect}, {"usermgmt", CmdUserMgmt}
 };
 
 
@@ -829,32 +872,6 @@ if (StartProcess(args, pid)) {
 } else {
     std::cerr << "Failed to start job: " << args << "\n";
     }
-}
-
-
-
-
-
-
-
-void CmdListUsersWrapper(const std::string& args) {
-    LPUSER_INFO_0 pBuf = nullptr;
-    DWORD dwLevel = 0, dwPrefMaxLen = MAX_PREFERRED_LENGTH;
-    DWORD dwEntriesRead = 0, dwTotalEntries = 0, dwResumeHandle = 0;
-
-    NET_API_STATUS nStatus = NetUserEnum(nullptr, dwLevel, FILTER_NORMAL_ACCOUNT,
-                                         (LPBYTE*)&pBuf, dwPrefMaxLen,
-                                         &dwEntriesRead, &dwTotalEntries, &dwResumeHandle);
-
-    if ((nStatus == NERR_Success || nStatus == ERROR_MORE_DATA) && pBuf != nullptr) {
-        for (DWORD i = 0; i < dwEntriesRead; ++i) {
-            std::wcout << L"User: " << pBuf[i].usri0_name << L"\n";
-        }
-    } else {
-        std::cout << "Failed to list users.\n";
-    }
-
-    if (pBuf != nullptr) NetApiBufferFree(pBuf);
 }
 
 void CmdMounts(const std::string&) {
@@ -3046,6 +3063,7 @@ void CmdSysinfo(const std::string&) {
         getProp(o, L"SecurityServicesConfigured", "VBS Services Configured: ");
         getProp(o, L"SecurityServicesRunning", "VBS Services Running: ");
         getProp(o, L"PCR7Configuration", "PCR7 Configuration: ");
+        getProp(o, L"SecureBootState", "Secure Boot State: ");
     });
 
     query(L"SELECT * FROM Win32_StartupCommand WHERE Name LIKE '%defender%'", [&](IWbemClassObject* o){
