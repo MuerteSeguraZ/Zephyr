@@ -1,13 +1,13 @@
-#define _WIN32_WINNT 0x0600 // For GetAdaptersAddresses and MIB_IF_ROW2
+#define _WIN32_WINNT 0x0600 
 
 #include "inspect.h"
-#include <winsock2.h>        // Must be before windows.h
+#include <winsock2.h>       
 #include <ws2tcpip.h>
 #include <windows.h>
 #include <winevt.h>
 #include <iphlpapi.h>
-#include <netioapi.h>        // For MIB_IF_ROW2, GetIfEntry2
-#include <vector>            // Fix std::vector error
+#include <netioapi.h>      
+#include <vector>          
 #include <algorithm>
 #include <chrono>
 #include <comdef.h>
@@ -57,7 +57,6 @@
 
 namespace fs = std::filesystem;
 
-// --- HashFile: computes file hash with specified algorithm ---
 std::string HashFile(const std::string& path, ALG_ID algId) {
     HCRYPTPROV hProv = 0;
     HCRYPTHASH hHash = 0;
@@ -97,7 +96,6 @@ std::string HashFile(const std::string& path, ALG_ID algId) {
     return hashStream.str();
 }
 
-// --- HumanSize: converts bytes to human-readable string ---
 std::string HumanSize(uintmax_t size) {
     const char* suffixes[] = { "B", "KB", "MB", "GB", "TB" };
     double s = static_cast<double>(size);
@@ -111,7 +109,6 @@ std::string HumanSize(uintmax_t size) {
     return oss.str();
 }
 
-// --- ShowFileAttributes: prints human-readable file attributes ---
 void ShowFileAttributes(DWORD attrs) {
     if (attrs & FILE_ATTRIBUTE_READONLY) std::cout << "Readonly ";
     if (attrs & FILE_ATTRIBUTE_HIDDEN) std::cout << "Hidden ";
@@ -124,7 +121,6 @@ void ShowFileAttributes(DWORD attrs) {
     std::cout << "\n";
 }
 
-// --- ShowFileTimestamps: displays created, modified, accessed times ---
 void ShowFileTimestamps(const fs::path& path) {
     HANDLE hFile = CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr,
                                OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
@@ -157,7 +153,6 @@ void ShowFileTimestamps(const fs::path& path) {
     CloseHandle(hFile);
 }
 
-// --- CmdInspectFile: main file inspection command handler ---
 void CmdInspectFile(const std::string& args) {
     std::istringstream iss(args);
     std::string cmd;
@@ -196,12 +191,10 @@ void CmdInspectFile(const std::string& args) {
     }
 }
 
-// --- Helper: convert FILETIME to ULONGLONG for time calculations ---
 ULONGLONG FileTimeToULL(const FILETIME& ft) {
     return (static_cast<ULONGLONG>(ft.dwHighDateTime) << 32) | ft.dwLowDateTime;
 }
 
-// --- CmdInspectProc: inspect process by PID ---
 void CmdInspectProc(const std::string& args) {
     std::istringstream iss(args);
     std::string cmd;
@@ -219,7 +212,6 @@ void CmdInspectProc(const std::string& args) {
         return;
     }
 
-    // Executable path
     wchar_t exePath[MAX_PATH];
     if (GetModuleFileNameExW(hProcess, NULL, exePath, MAX_PATH)) {
         std::wcout << L"Executable Path: " << exePath << L"\n";
@@ -227,7 +219,6 @@ void CmdInspectProc(const std::string& args) {
         std::cerr << "Failed to get executable path.\n";
     }
 
-    // Process CPU times
     FILETIME ftCreation, ftExit, ftKernel, ftUser;
     if (GetProcessTimes(hProcess, &ftCreation, &ftExit, &ftKernel, &ftUser)) {
         double kernelSec = FileTimeToULL(ftKernel) / 1e7;
@@ -240,7 +231,6 @@ void CmdInspectProc(const std::string& args) {
         std::cerr << "Failed to get process times.\n";
     }
 
-    // Memory info
     PROCESS_MEMORY_COUNTERS pmc;
     if (GetProcessMemoryInfo(hProcess, &pmc, sizeof(pmc))) {
         std::cout << "Memory Usage:\n";
@@ -251,13 +241,11 @@ void CmdInspectProc(const std::string& args) {
         std::cerr << "Failed to get process memory info.\n";
     }
 
-    // Handle count
     DWORD handleCount = 0;
     if (GetProcessHandleCount(hProcess, &handleCount)) {
         std::cout << "Handle Count: " << handleCount << "\n";
     }
 
-    // Thread count via snapshot
     HANDLE hThreadSnap = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
     if (hThreadSnap != INVALID_HANDLE_VALUE) {
         THREADENTRY32 te32 = { sizeof(THREADENTRY32) };
@@ -277,7 +265,6 @@ void CmdInspectProc(const std::string& args) {
     CloseHandle(hProcess);
 }
 
-// --- Helper: print SID string ---
 void PrintSid(PSID sid) {
     LPWSTR sidString = nullptr;
     if (ConvertSidToStringSidW(sid, &sidString)) {
@@ -288,7 +275,6 @@ void PrintSid(PSID sid) {
     }
 }
 
-// --- CmdInspectUser: inspect user by username ---
 void CmdInspectUser(const std::string& args) {
     std::istringstream iss(args);
     std::string cmd, username;
@@ -299,7 +285,6 @@ void CmdInspectUser(const std::string& args) {
         return;
     }
 
-    // Convert username to wide string
     std::wstring wUsername(username.begin(), username.end());
 
     USER_INFO_4* pUserInfo = nullptr;
@@ -313,7 +298,6 @@ void CmdInspectUser(const std::string& args) {
     std::wcout << L"Full Name:  " << pUserInfo->usri4_full_name << L"\n";
     std::wcout << L"Comment:    " << pUserInfo->usri4_comment << L"\n";
 
-    // Extract RID from SID
     auto GetRidFromSid = [](PSID sid) -> DWORD {
         if (!IsValidSid(sid)) return 0;
         UCHAR subAuthCount = *GetSidSubAuthorityCount(sid);
@@ -375,7 +359,6 @@ void CmdInspectNet(const std::string& args) {
         AF_UNSPEC, GAA_FLAG_INCLUDE_PREFIX, nullptr, pAddresses, &outBufLen);
 
     if (dwRetVal == ERROR_BUFFER_OVERFLOW) {
-        // Buffer too small, resize and try again
         buffer.resize(outBufLen);
         pAddresses = reinterpret_cast<IP_ADAPTER_ADDRESSES*>(buffer.data());
         dwRetVal = GetAdaptersAddresses(AF_UNSPEC, GAA_FLAG_INCLUDE_PREFIX, nullptr, pAddresses, &outBufLen);
@@ -460,7 +443,6 @@ SYSTEMTIME FileTimeToSystemTimeLocal(const FILETIME& ft) {
     return stLocal;
 }
 
-// Format SYSTEMTIME as string: "YYYY-MM-DD HH:MM:SS"
 std::string FormatSystemTime(const SYSTEMTIME& st) {
     char buffer[128];
     snprintf(buffer, sizeof(buffer), "%04d-%02d-%02d %02d:%02d:%02d",
@@ -468,7 +450,6 @@ std::string FormatSystemTime(const SYSTEMTIME& st) {
     return std::string(buffer);
 }
 
-// Run a PowerShell command and capture its output (returns string)
 std::string RunPowerShell(const std::string& cmd) {
     std::string fullCmd = "powershell -NoProfile -Command \"" + cmd + "\"";
     FILE* pipe = _popen(fullCmd.c_str(), "r");
@@ -483,7 +464,6 @@ std::string RunPowerShell(const std::string& cmd) {
     return result;
 }
 
-// Print Windows version info from registry
 void PrintWindowsVersionInfo() {
     HKEY hKey;
     if (RegOpenKeyExW(HKEY_LOCAL_MACHINE,
@@ -517,7 +497,6 @@ void PrintWindowsVersionInfo() {
 
         RegCloseKey(hKey);
 
-        // Format install date from Unix timestamp to local time string
         time_t t = installDate;
         struct tm localTm;
         localtime_s(&localTm, &t);
@@ -535,7 +514,6 @@ void PrintWindowsVersionInfo() {
     }
 }
 
-// Get product edition friendly name using GetProductInfo()
 void PrintProductEditionInfo() {
     OSVERSIONINFOEXW osvi = { sizeof(osvi) };
     if (!GetVersionExW((LPOSVERSIONINFOW)&osvi)) {
@@ -556,7 +534,6 @@ void PrintProductEditionInfo() {
         return;
     }
 
-    // Map product type to friendly name
     std::string editionName = "Unknown Edition";
     switch (dwType) {
     case PRODUCT_HOME_BASIC: editionName = "Home Basic"; break;
@@ -564,14 +541,32 @@ void PrintProductEditionInfo() {
     case PRODUCT_PROFESSIONAL: editionName = "Professional"; break;
     case PRODUCT_ENTERPRISE: editionName = "Enterprise"; break;
     case PRODUCT_ULTIMATE: editionName = "Ultimate"; break;
-    // Add more cases if needed
+    case PRODUCT_HOME_BASIC_E: editionName = "Home Basic E"; break;
+    case PRODUCT_HOME_PREMIUM_E: editionName = "Home Premium E"; break;
+    case PRODUCT_HOME_BASIC_N: editionName = "Home Basic N"; break;
+    case PRODUCT_HOME_PREMIUM_N: editionName = "Home Premium N"; break;
+    case PRODUCT_PROFESSIONAL_N: editionName = "Professional N"; break;
+    case PRODUCT_ENTERPRISE_N: editionName = "Enterprise N"; break;
+    case PRODUCT_ULTIMATE_N: editionName = "Ultimate N"; break;
+    case PRODUCT_STARTER: editionName = "Starter"; break;
+    case PRODUCT_CLUSTER_SERVER: editionName = "Cluster Server"; break;
+    case PRODUCT_DATACENTER_SERVER: editionName = "Datacenter Server"; break;
+    case PRODUCT_DATACENTER_SERVER_CORE: editionName = "Datacenter Server Core"; break;
+    case PRODUCT_ENTERPRISE_SERVER: editionName = "Enterprise Server"; break;
+    case PRODUCT_ENTERPRISE_SERVER_CORE: editionName = "Enterprise Server Core"; break;
+    case PRODUCT_ENTERPRISE_SERVER_IA64: editionName = "Enterprise Server IA64"; break;
+    case PRODUCT_SMALLBUSINESS_SERVER: editionName = "Small Business Server"; break;
+    case PRODUCT_SMALLBUSINESS_SERVER_PREMIUM: editionName = "Small Business Server Premium"; break;
+    case PRODUCT_STANDARD_SERVER: editionName = "Standard Server"; break;
+    case PRODUCT_STANDARD_SERVER_CORE: editionName = "Standard Server Core"; break;
+    case PRODUCT_WEB_SERVER: editionName = "Web Server"; break;
+    case PRODUCT_WEB_SERVER_CORE: editionName = "Web Server Core"; break;
     default: editionName = "Other Edition"; break;
     }
 
     std::cout << "Product Edition Info: " << editionName << "\n";
 }
 
-// Print Windows activation/license status from registry
 void PrintActivationStatus() {
     HKEY hKey;
     if (RegOpenKeyExW(HKEY_LOCAL_MACHINE,
@@ -585,7 +580,6 @@ void PrintActivationStatus() {
 
         RegCloseKey(hKey);
 
-        // Interpret licenseStatus codes
         std::string statusStr;
         switch (licenseStatus) {
         case 0: statusStr = "Unlicensed"; break;
@@ -603,7 +597,6 @@ void PrintActivationStatus() {
     }
 }
 
-// Print system uptime in human readable form
 void PrintSystemUptimeReadable() {
     ULONGLONG ms = GetTickCount64();
     ULONGLONG seconds = ms / 1000;
@@ -618,7 +611,6 @@ void PrintSystemUptimeReadable() {
     std::cout << "System Uptime: " << days << "d " << hours << "h " << minutes << "m " << seconds << "s\n";
 }
 
-// Print registered owner from registry
 void PrintRegisteredOwner() {
     HKEY hKey;
     if (RegOpenKeyExW(HKEY_LOCAL_MACHINE,
@@ -637,11 +629,9 @@ void PrintRegisteredOwner() {
     }
 }
 
-// Query some Windows optional features using PowerShell and display partial list
 void PrintWindowsFeatures() {
     std::cout << "Windows Optional Features (partial list):\n";
 
-    // Customize features to query here
     std::string psCmd =
         "Get-WindowsOptionalFeature -Online | "
         "Where-Object {$_.FeatureName -match 'NetFx|Hyper-V|MicrosoftWindowsSubsystemForLinux'} | "
@@ -651,9 +641,8 @@ void PrintWindowsFeatures() {
     std::cout << output << "\n";
 }
 
-// Main InspectWIN command function
 void CmdInspectWin(const std::string& args) {
-    (void)args; // no args used
+    (void)args; 
 
     std::cout << ANSI_BOLD_CYAN "=== Windows Version and Build Information ===\n" << ANSI_RESET;
     PrintWindowsVersionInfo();
@@ -684,12 +673,10 @@ bool ContainsCaseInsensitive(const std::string& haystack, const std::string& nee
     return (it != haystack.end());
 }
 
-// Inspect environment variables, optionally filter by substring (case-insensitive)
 void CmdInspectEnv(const std::string& args) {
-    // args = filter string (optional)
     std::string filter = args;
-    filter.erase(0, filter.find_first_not_of(" \t")); // trim left
-    filter.erase(filter.find_last_not_of(" \t") + 1); // trim right
+    filter.erase(0, filter.find_first_not_of(" \t")); 
+    filter.erase(filter.find_last_not_of(" \t") + 1); 
 
     std::cout << ANSI_BOLD_CYAN "=== Environment Variables ===\n" << ANSI_RESET;
 
@@ -704,12 +691,10 @@ void CmdInspectEnv(const std::string& args) {
         std::wstring wvar(current);
         current += wvar.size() + 1;
 
-        // Convert to UTF-8 for easy processing and output
         int sizeNeeded = WideCharToMultiByte(CP_UTF8, 0, wvar.c_str(), -1, NULL, 0, NULL, NULL);
         std::string varStr(sizeNeeded, 0);
         WideCharToMultiByte(CP_UTF8, 0, wvar.c_str(), -1, &varStr[0], sizeNeeded, NULL, NULL);
 
-        // Remove trailing null char added by WideCharToMultiByte
         if (!varStr.empty() && varStr.back() == '\0')
             varStr.pop_back();
 
@@ -758,7 +743,6 @@ std::string WideToUtf8(LPCWSTR wideStr) {
 void PrintLastShutdownReason() {
     std::cout << "Last Shutdown Reason: ";
 
-    // Query for the most recent shutdown/reboot event
     LPCWSTR query =
         L"<QueryList>"
         L"  <Query Id='0' Path='System'>"
@@ -780,14 +764,12 @@ void PrintLastShutdownReason() {
         DWORD bufferSize = 0;
         DWORD propertyCount = 0;
 
-        // Get the rendered XML of the event
         EvtRender(nullptr, events[0], EvtRenderEventXml, 0, nullptr, &bufferSize, &propertyCount);
         if (GetLastError() == ERROR_INSUFFICIENT_BUFFER) {
             std::wstring xml(bufferSize / sizeof(wchar_t), L'\0');
             if (EvtRender(nullptr, events[0], EvtRenderEventXml, bufferSize, &xml[0], &bufferSize, &propertyCount)) {
                 std::string xmlUtf8 = WideToUtf8(xml.c_str());
 
-                // Determine the Event ID
                 size_t idStart = xmlUtf8.find("<EventID");
                 if (idStart != std::string::npos) {
                     idStart = xmlUtf8.find(">", idStart) + 1;
@@ -796,7 +778,6 @@ void PrintLastShutdownReason() {
 
                     switch (eventID) {
                         case 1074: {
-                            // Planned shutdown or restart
                             size_t reasonStart = xmlUtf8.find("<Data Name=\"param4\">");
                             if (reasonStart != std::string::npos) {
                                 reasonStart += strlen("<Data Name=\"param4\">");
@@ -804,7 +785,6 @@ void PrintLastShutdownReason() {
                                 std::string reason = xmlUtf8.substr(reasonStart, reasonEnd - reasonStart);
                                 std::cout << "Planned shutdown — " << reason << "\n";
                             } else {
-                                // Fallback to user and process
                                 std::string user = "(unknown user)";
                                 std::string process = "(unknown process)";
                                 size_t uStart = xmlUtf8.find("<Data Name=\"param1\">");
@@ -861,7 +841,7 @@ void CmdInspectBoot(const std::string& args) {
 }
 
 void CmdInspectHelp(const std::string& args) {
-    (void)args; // no args used
+    (void)args; 
     std::cout << ANSI_BOLD_CYAN "=== Inspect Commands Help ===\n" << ANSI_RESET;
     std::cout << "Available commands:\n";
     std::cout << " - inspect file <path>       : Inspect file attributes, size, timestamps, and hashes.\n";

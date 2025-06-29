@@ -5,8 +5,8 @@
 #include <string>
 #include <sstream>
 #include <vector>
-#include <algorithm>  // for std::transform
-#include <cwctype>    // for towlower
+#include <algorithm>  
+#include <cwctype>   
 #include <windows.h>
 #include <lm.h>
 #include <Wtsapi32.h>
@@ -14,7 +14,7 @@
 #include <Userenv.h>
 #include <comdef.h>
 #include <Wbemidl.h>
-#include <Psapi.h> // For EnumProcesses
+#include <Psapi.h> 
 
 #pragma comment(lib, "netapi32.lib")
 #pragma comment(lib, "Wtsapi32.lib")
@@ -22,7 +22,7 @@
 #pragma comment(lib, "wbemuuid.lib")
 #pragma comment(lib, "Psapi.lib")
 
-// Helper: Convert wide char string to std::string (UTF-8)
+// Ya always need to have a WideToString helper
 std::string WideToString(const wchar_t* wstr) {
     if (!wstr) return {};
     int size_needed = WideCharToMultiByte(CP_UTF8, 0, wstr, -1, nullptr, 0, nullptr, nullptr);
@@ -32,7 +32,7 @@ std::string WideToString(const wchar_t* wstr) {
     return strTo;
 }
 
-// Helper: Print user name from USER_INFO_0 struct
+// Annoying LPUSER_INFO_0 helper
 void PrintUserName(LPUSER_INFO_0 pUserInfo) {
     if (pUserInfo && pUserInfo->usri0_name)
         std::wcout << L" - " << pUserInfo->usri0_name << L"\n";
@@ -44,7 +44,7 @@ void CmdListUsers(const std::string& args) {
 
     LPUSER_INFO_0 pBuf = nullptr;
     DWORD entriesRead = 0, totalEntries = 0;
-    DWORD resumeHandle = 0; // <-- changed here
+    DWORD resumeHandle = 0; // <-- fix
     NET_API_STATUS status;
 
     do {
@@ -70,7 +70,7 @@ void CmdListUsers(const std::string& args) {
 
 
 void CmdListGroups(const std::string& args) {
-    (void)args; // Unused parameter
+    (void)args; 
     std::wcout << L"[listgroups] Listing all local groups on the system:\n";
 
     LPLOCALGROUP_INFO_0 pBuf = nullptr;
@@ -101,7 +101,7 @@ void CmdListGroups(const std::string& args) {
 }
 
 void CmdListLoggedIn(const std::string& args) {
-    (void)args; // Unused parameter
+    (void)args; 
     std::wcout << L"[listloggedin] Currently logged in users / active sessions:\n";
 
     PWTS_SESSION_INFO pSessionInfo = nullptr;
@@ -176,10 +176,9 @@ void CmdListAdmins(const std::string& args) {
 
 
 void CmdListProfiles(const std::string& args) {
-    (void)args; // Unused parameter
+    (void)args; 
     std::wcout << L"[listprofiles] Listing user profiles on the machine:\n";
 
-    // Enumerate profiles directory (C:\Users)
     WIN32_FIND_DATA ffd;
     HANDLE hFind = FindFirstFile(L"C:\\Users\\*", &ffd);
     if (hFind != INVALID_HANDLE_VALUE) {
@@ -196,7 +195,7 @@ void CmdListProfiles(const std::string& args) {
 }
 
 void CmdListDomains(const std::string& args) {
-    (void)args; // Unused parameter
+    (void)args; 
     std::wcout << L"[listdomains] Listing domain names computer is joined to:\n";
 
     PWSTR pName = nullptr;
@@ -219,7 +218,7 @@ void CmdListDomains(const std::string& args) {
 }
 
 void CmdListProcessUsers(const std::string& args) {
-    (void)args; // Unused parameter
+    (void)args; 
     std::wcout << L"[listprocessusers] Showing users associated with running processes:\n";
 
     DWORD processes[1024], needed = 0;
@@ -231,7 +230,7 @@ void CmdListProcessUsers(const std::string& args) {
 
     for (DWORD i = 0; i < count; i++) {
         DWORD pid = processes[i];
-        if (pid == 0) continue; // Skip System Idle Process
+        if (pid == 0) continue; 
 
         HANDLE hProcess = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, FALSE, pid);
         if (hProcess) {
@@ -383,7 +382,7 @@ void CmdListLocalUsers(const std::string& args) {
     do {
         status = NetUserEnum(
             nullptr,            // local server
-            0,                  // level 0: only username
+            0,                  // only username
             FILTER_NORMAL_ACCOUNT, // filter normal user accounts
             (LPBYTE*)&pUserInfo,
             MAX_PREFERRED_LENGTH,
@@ -420,7 +419,7 @@ void CmdListLocalGroups(const std::string& args) {
     do {
         status = NetLocalGroupEnum(
             nullptr,                // local server
-            0,                      // level 0: only group name
+            0,                      // only group name
             (LPBYTE*)&pGroupInfo,
             MAX_PREFERRED_LENGTH,
             &dwEntriesRead,
@@ -447,18 +446,16 @@ void CmdListLocalGroups(const std::string& args) {
 void CmdListGroupMembers(const std::string& args) {
     std::string cleanArgs = args;
 
-    // Remove quotes if present
     if (!cleanArgs.empty() && cleanArgs.front() == '"' && cleanArgs.back() == '"') {
         cleanArgs = cleanArgs.substr(1, cleanArgs.length() - 2);
     }
 
-    // Check for "-all" flag
     if (cleanArgs == "-all") {
         std::wcout << L"[listgroupmembers] Listing all members of all local groups:\n";
 
         LPLOCALGROUP_INFO_0 pGroupInfo = nullptr;
         DWORD entriesRead = 0, totalEntries = 0;
-        DWORD_PTR resumeHandle = 0;  // ✅ Fixed type here
+        DWORD_PTR resumeHandle = 0;  // fix again
 
         NET_API_STATUS status = NetLocalGroupEnum(
             nullptr, 0, (LPBYTE*)&pGroupInfo, MAX_PREFERRED_LENGTH,
@@ -470,10 +467,9 @@ void CmdListGroupMembers(const std::string& args) {
                 std::wstring groupName = pGroupInfo[i].lgrpi0_name;
                 std::wcout << L"\nGroup: " << groupName << L"\n";
 
-                // Reuse the member listing logic
                 LOCALGROUP_MEMBERS_INFO_0* pBuf = nullptr;
                 DWORD eRead = 0, tEntries = 0;
-                DWORD_PTR rHandle = 0;  // ✅ Fixed type here
+                DWORD_PTR rHandle = 0;  // Fix again again
 
                 status = NetLocalGroupGetMembers(
                     nullptr, groupName.c_str(), 0,
@@ -511,13 +507,12 @@ void CmdListGroupMembers(const std::string& args) {
         return;
     }
 
-    // Default behavior: list a specific group's members
     std::wstring groupName(cleanArgs.begin(), cleanArgs.end());
     std::wcout << L"[listgroupmembers] Listing members of group: \"" << groupName << L"\"\n";
 
     LOCALGROUP_MEMBERS_INFO_0* pBuf = nullptr;
     DWORD entriesRead = 0, totalEntries = 0;
-    DWORD_PTR resumeHandle = 0;  // ✅ Fixed type here
+    DWORD_PTR resumeHandle = 0;  // Fix again again again
 
     NET_API_STATUS status = NetLocalGroupGetMembers(
         nullptr, groupName.c_str(), 0,
@@ -548,14 +543,12 @@ void CmdListGroupMembers(const std::string& args) {
 }
 
 void CmdListRemoteSessions(const std::string& args) {
-    // Flags for filtering
     bool showAll = false;
     bool showActive = false;
     bool showDisconnected = false;
     std::string filterUser;
-    int filterProtocol = -1; // -1 means no filter
+    int filterProtocol = -1; // -1 means no filter :(
 
-    // Parse args (naive parsing)
     std::vector<std::string> tokens;
     size_t pos = 0, prev = 0;
     while ((pos = args.find(' ', prev)) != std::string::npos) {
@@ -581,14 +574,12 @@ void CmdListRemoteSessions(const std::string& args) {
         }
     }
 
-    // Convert filterUser to wide string lowercase for comparison
     std::wstring filterUserW;
     if (!filterUser.empty()) {
         filterUserW.assign(filterUser.begin(), filterUser.end());
         std::transform(filterUserW.begin(), filterUserW.end(), filterUserW.begin(), ::towlower);
     }
 
-    // Enumerate sessions
     PWTS_SESSION_INFO pSessionInfo = nullptr;
     DWORD sessionCount = 0;
 
@@ -603,18 +594,15 @@ void CmdListRemoteSessions(const std::string& args) {
         DWORD sessionId = pSessionInfo[i].SessionId;
         WTS_CONNECTSTATE_CLASS sessionState = pSessionInfo[i].State;
 
-        // Filter session state if needed
         if (!showAll) {
             if (showActive && sessionState != WTSActive) continue;
             if (showDisconnected && sessionState != WTSDisconnected) continue;
             if (!showActive && !showDisconnected && sessionState != WTSActive) continue;
         }
 
-        // Query username (wide string)
         LPWSTR pUserName = nullptr;
         DWORD userNameLen = 0;
         if (!WTSQuerySessionInformationW(WTS_CURRENT_SERVER_HANDLE, sessionId, WTSUserName, &pUserName, &userNameLen)) {
-            // Failed to query username, skip session
             continue;
         }
 
@@ -626,7 +614,6 @@ void CmdListRemoteSessions(const std::string& args) {
         std::wstring userNameW(pUserName);
         WTSFreeMemory(pUserName);
 
-        // Filter by username (case-insensitive)
         if (!filterUserW.empty()) {
             std::wstring userNameLower = userNameW;
             std::transform(userNameLower.begin(), userNameLower.end(), userNameLower.begin(), ::towlower);
@@ -635,24 +622,21 @@ void CmdListRemoteSessions(const std::string& args) {
             }
         }
 
-        // Query client protocol type (binary data, ULONG)
-        LPWSTR pClientProtocol = nullptr;  // Use LPWSTR to match WTSQuerySessionInformationW signature
+        LPWSTR pClientProtocol = nullptr;  
         DWORD protocolLen = 0;
         ULONG clientProtocol = 0;
 
         if (WTSQuerySessionInformationW(WTS_CURRENT_SERVER_HANDLE, sessionId, WTSClientProtocolType, &pClientProtocol, &protocolLen)) {
             if (pClientProtocol && protocolLen == sizeof(ULONG)) {
-                clientProtocol = *(ULONG*)pClientProtocol;  // interpret buffer as ULONG
+                clientProtocol = *(ULONG*)pClientProtocol; 
             }
             WTSFreeMemory(pClientProtocol);
         }
 
-        // Filter by protocol if needed
         if (filterProtocol >= 0 && clientProtocol != (ULONG)filterProtocol) {
             continue;
         }
 
-        // Output session info
         std::wcout << L"SessionID: " << sessionId
                    << L", User: " << userNameW
                    << L", State: ";
@@ -684,7 +668,7 @@ void CmdListRemoteSessions(const std::string& args) {
 }
 
 void CmdListHelp(const std::string& args) {
-    (void)args; // Unused parameter
+    (void)args; 
     std::cout << "Available commands:\n";
     std::cout << "  listusers           - List all user accounts\n";
     std::cout << "  listgroups (alias: listlocalgroups) - List all local groups\n";

@@ -63,10 +63,10 @@
 #include <regex>
 #include <locale>
 
-
+// Big commands!
 #include "bigcommands/inspect.h"
 #include "list/list.h"
-// Link with necessary libraries
+
 #pragma comment(lib, "iphlpapi.lib")
 #pragma comment(lib, "ws2_32.lib")
 #pragma comment(lib, "setupapi.lib")
@@ -516,13 +516,11 @@ void CmdFSize(const std::string& arg) {
     oss << std::fixed << std::setprecision(6) << value;
     std::string formatted = oss.str();
 
-    // Replace '.' with ',' as decimal separator
     size_t dotPos = formatted.find('.');
     if (dotPos != std::string::npos) {
         formatted[dotPos] = ',';
     }
 
-    // Add thousands commas only to integer part
     std::string intPart = dotPos == std::string::npos ? formatted : formatted.substr(0, dotPos);
     std::string fracPart = dotPos == std::string::npos ? "" : formatted.substr(dotPos);
 
@@ -698,7 +696,6 @@ bool ResumeProcessThreads(DWORD pid) {
         if (te32.th32OwnerProcessID == pid) {
             HANDLE hThread = OpenThread(THREAD_SUSPEND_RESUME, FALSE, te32.th32ThreadID);
             if (hThread) {
-                // ResumeThread returns previous suspend count
                 while (ResumeThread(hThread) > 0) {
                     resumedAny = true;
                 }
@@ -824,7 +821,6 @@ void CmdFgJob(const std::string& args) {
 
     std::cout << "Bringing job " << jobId << " to foreground. When done, restart Zephyr.\n";
 
-    // Wait for process to finish (blocking)
     HANDLE hProcess = OpenProcess(SYNCHRONIZE, FALSE, it->pid);
     if (hProcess) {
         WaitForSingleObject(hProcess, INFINITE);
@@ -847,7 +843,7 @@ bool StartProcess(const std::string& command, DWORD& pid) {
     }
 
     pid = pi.dwProcessId;
-    ResumeThread(pi.hThread); // Start the main thread
+    ResumeThread(pi.hThread); 
     CloseHandle(pi.hThread);
     CloseHandle(pi.hProcess);
     return true;
@@ -863,10 +859,10 @@ DWORD pid;
 if (StartProcess(args, pid)) {
     static int nextJobId = 1;
     g_jobs.push_back(Job{
-        nextJobId++,  // jobId
-        pid,          // pid
-        "Running",    // status
-        args          // command
+        nextJobId++, 
+        pid,         
+        "Running",  
+        args        
     });
     std::cout << "Started job " << g_jobs.back().jobId << " with PID " << pid << ".\n";
 } else {
@@ -2395,7 +2391,6 @@ void CmdUserInfo(const std::string& args) {
 }
 
 void CmdWhoAmI(const std::string& args) {
-    // Get username
     char username[UNLEN + 1];
     DWORD username_len = UNLEN + 1;
     if (GetUserNameA(username, &username_len)) {
@@ -2408,14 +2403,12 @@ void CmdWhoAmI(const std::string& args) {
     if (args != "-ext")
         return;
 
-    // Open process token
     HANDLE hToken = nullptr;
     if (!OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &hToken)) {
         std::cerr << "Failed to open process token.\n";
         return;
     }
 
-    // Get SID
     DWORD len = 0;
     GetTokenInformation(hToken, TokenUser, nullptr, 0, &len);
     std::vector<BYTE> buffer(len);
@@ -2434,7 +2427,6 @@ void CmdWhoAmI(const std::string& args) {
         std::cerr << "Failed to convert SID.\n";
     }
 
-    // Get integrity level
     len = 0;
     GetTokenInformation(hToken, TokenIntegrityLevel, nullptr, 0, &len);
     std::vector<BYTE> levelBuffer(len);
@@ -2896,12 +2888,10 @@ void CmdWhereami(const std::string&) {
 }
 
 void CmdSysinfo(const std::string&) {
-    // --- Native System & Memory Info ---
     SYSTEM_INFO si; GetSystemInfo(&si);
     MEMORYSTATUSEX msx{ sizeof(msx) }; GlobalMemoryStatusEx(&msx);
     auto bytesToGB = [](DWORDLONG b){ return b / 1024.0 / 1024 / 1024; };
 
-    // Color setup
     const char* L = "\033[1;33m";
     const char* V = "\033[1;36m";
     const char* R = "\033[0m";
@@ -2937,7 +2927,6 @@ void CmdSysinfo(const std::string&) {
     std::cout << ((load >= 60) ? "\033[1;31m" : (load >= 40) ? "\033[1;33m" : "\033[1;32m")
               << load << "%" << R << "\n";
 
-    // --- COM/WMI Setup ---
     if (FAILED(CoInitializeEx(nullptr, COINIT_MULTITHREADED))) return;
     CoInitializeSecurity(nullptr, -1, nullptr, nullptr,
                          RPC_C_AUTHN_LEVEL_DEFAULT, RPC_C_IMP_LEVEL_IMPERSONATE,
@@ -2983,7 +2972,6 @@ void CmdSysinfo(const std::string&) {
         VariantClear(&v);
     };
 
-    // --- WMI Queries ---
     OSVERSIONINFOEXW osvi = {};
     osvi.dwOSVersionInfoSize = sizeof(osvi);
     GetVersionExW(reinterpret_cast<LPOSVERSIONINFOW>(&osvi));
@@ -3072,7 +3060,6 @@ void CmdSysinfo(const std::string&) {
         getProp(o, L"Location", "WinDef Location: ");
     });
 
-    // SecureBoot & DMA via registry
     HKEY h;
     DWORD v, s = sizeof(v);
     if (RegOpenKeyEx(HKEY_LOCAL_MACHINE,
@@ -3731,12 +3718,11 @@ void CmdLinkup(const std::string&) {
         std::string name = adapter->FriendlyName ? WStringToUTF8(adapter->FriendlyName) : "(unknown)";
         std::string desc = adapter->Description ? WStringToUTF8(adapter->Description) : "(unknown)";
 
-        // Interface Type
         std::string ifType;
         switch (adapter->IfType) {
             case IF_TYPE_ETHERNET_CSMACD: ifType = "Ethernet"; break;
             case IF_TYPE_IEEE80211:       ifType = "Wi-Fi"; break;
-            case MIB_IF_TYPE_LOOPBACK:    ifType = "Loopback"; break; // fixed here
+            case MIB_IF_TYPE_LOOPBACK:    ifType = "Loopback"; break; // bugfix 1
             case IF_TYPE_TUNNEL:          ifType = "Tunnel"; break;
             case IF_TYPE_PPP:             ifType = "PPP"; break;
             case IF_TYPE_SLIP:            ifType = "SLIP"; break;
@@ -3781,7 +3767,6 @@ void CmdLinkup(const std::string&) {
                 if (isIPv4) {
                     std::cout << ANSI_BOLD_GREEN << "  IP Address:     " << ANSI_RESET << ipStr << "\n";
 
-                    // Subnet Mask from prefix length
                     uint8_t prefix = ua->OnLinkPrefixLength;
                     if (prefix <= 32) {
                         uint32_t mask = (prefix == 0) ? 0 : (~0U << (32 - prefix));
@@ -3802,11 +3787,9 @@ void CmdLinkup(const std::string&) {
             std::cout << ANSI_BOLD_GREEN << "  IP Address:     " << ANSI_RESET << "(none assigned)\n";
         }
 
-        // DHCPv4 Enabled?
         std::cout << ANSI_BOLD_GREEN << "  DHCPv4:         " << ANSI_RESET
                   << ((adapter->Flags & IP_ADAPTER_DHCP_ENABLED) ? "Enabled" : "Disabled") << "\n";
 
-        // DHCPv4 Server Address (extract manually from SOCKET_ADDRESS)
         if (adapter->Dhcpv4Server.lpSockaddr) {
             char dhcpServerStr[INET_ADDRSTRLEN] = {};
             if (adapter->Dhcpv4Server.lpSockaddr->sa_family == AF_INET) {
@@ -3814,10 +3797,10 @@ void CmdLinkup(const std::string&) {
                 inet_ntop(AF_INET, &(dhcpv4->sin_addr), dhcpServerStr, sizeof(dhcpServerStr));
                 std::cout << ANSI_BOLD_GREEN << "  DHCPv4 Server:  " << ANSI_RESET << dhcpServerStr << "\n";
             }
-            // You could add IPv6 DHCP server similarly if needed
+            // I will add IPv6 DHCPv6 server support later
         }
 
-        // DHCPv6 Enabled? (Flags mask might differ per Windows SDK, fallback to 0 if undefined)
+        // Is that bih enabled tho
         bool dhcpv6_enabled = false;
 #ifdef IP_ADAPTER_DHCPV6_ENABLED
         dhcpv6_enabled = (adapter->Flags & IP_ADAPTER_DHCPV6_ENABLED) != 0;
@@ -3825,7 +3808,6 @@ void CmdLinkup(const std::string&) {
         std::cout << ANSI_BOLD_GREEN << "  DHCPv6:         " << ANSI_RESET
                   << (dhcpv6_enabled ? "Enabled" : "Disabled") << "\n";
 
-        // Gateway Address(es)
         if (adapter->FirstGatewayAddress) {
             for (IP_ADAPTER_GATEWAY_ADDRESS* gw = adapter->FirstGatewayAddress; gw != nullptr; gw = gw->Next) {
                 if (gw->Address.lpSockaddr) {
@@ -3842,7 +3824,6 @@ void CmdLinkup(const std::string&) {
             }
         }
 
-        // DNS Servers
         if (adapter->FirstDnsServerAddress) {
             std::cout << ANSI_BOLD_GREEN << "  DNS Servers:    " << ANSI_RESET;
             IP_ADAPTER_DNS_SERVER_ADDRESS* dns = adapter->FirstDnsServerAddress;
@@ -4622,7 +4603,6 @@ void CmdClipCopy(const std::string& args) {
 
     std::string textToCopy;
 
-    // Check if it's a file path
     std::ifstream file(args, std::ios::in | std::ios::binary);
     if (file.is_open()) {
         std::ostringstream ss;
@@ -4630,10 +4610,8 @@ void CmdClipCopy(const std::string& args) {
         textToCopy = ss.str();
         file.close();
     } else {
-        // It's not a file; assume direct string input.
         textToCopy = args;
 
-        // Remove surrounding quotes if present
         if (!textToCopy.empty() && textToCopy.front() == '"' && textToCopy.back() == '"') {
             textToCopy = textToCopy.substr(1, textToCopy.size() - 2);
         }
@@ -4644,7 +4622,6 @@ void CmdClipCopy(const std::string& args) {
         return;
     }
 
-    // Convert to wide string (for CF_UNICODETEXT)
     int wideLen = MultiByteToWideChar(CP_UTF8, 0, textToCopy.c_str(), -1, nullptr, 0);
     if (wideLen <= 0) {
         std::cerr << "Failed to convert text to wide string.\n";
@@ -4667,7 +4644,6 @@ void CmdClipCopy(const std::string& args) {
     MultiByteToWideChar(CP_UTF8, 0, textToCopy.c_str(), -1, pMem, wideLen);
     GlobalUnlock(hMem);
 
-    // Retry opening the clipboard for up to 500ms
     bool opened = false;
     for (int i = 0; i < 5; ++i) {
         if (OpenClipboard(nullptr)) {

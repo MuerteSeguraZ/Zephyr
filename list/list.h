@@ -1,10 +1,7 @@
-// UserManagementShell.h
-
 #pragma once
 
 #include <string>
 
-// Command function declarations
 void CmdListUsers(const std::string& args);
 void CmdListGroups(const std::string& args);
 void CmdListLoggedIn(const std::string& args);
