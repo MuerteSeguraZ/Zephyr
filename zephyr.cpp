@@ -381,6 +381,57 @@ void EnableVirtualTerminalProcessing() {
     SetConsoleMode(hOut, dwMode);
 }
 
+bool RunExeIfExists(const std::string& command, const std::string& args) {
+    namespace fs = std::filesystem;
+
+    std::string exeFilename = command + ".exe";
+
+    if (fs::exists(exeFilename)) {
+        std::string fullCmd = "\"" + exeFilename + "\"";
+        if (!args.empty()) {
+            fullCmd += " " + args;
+        }
+        int ret = std::system(fullCmd.c_str());
+        return (ret == 0);  // true if command succeeded
+    } else {
+        return false;
+    }
+}
+
+bool RunPowershellIfExists(const std::string& command, const std::string& args) {
+    namespace fs = std::filesystem;
+
+    std::string ps1Filename = command + ".ps1";
+
+    if (fs::exists(ps1Filename)) {
+        std::string fullCmd = "powershell.exe -ExecutionPolicy Bypass -File \"" + ps1Filename + "\"";
+        if (!args.empty()) {
+            fullCmd += " " + args;
+        }
+        std::system(fullCmd.c_str());
+        return true;
+    } else {
+        return false;
+    }
+}
+
+bool RunVbsIfExists(const std::string& command, const std::string& args) {
+    namespace fs = std::filesystem;
+
+    std::stirng vbsFilename = command + ".vbs";
+
+    if (fs::exists(vbsFilename)) {
+        std::string fullCmd = "cscript.exe //NoLogo \"" + vbsFilename "\"";
+        if (!args.empty()) {
+            fullCmd += " " + args;
+        }
+        std::system(fullCmd.c_stra());
+        return true;
+    } else {
+        return false;
+    }
+}
+
 
 int main() {
     EnableVirtualTerminalProcessing();
@@ -403,10 +454,16 @@ int main() {
             it->second(args);
         } else {
             if (!RunBatchIfExists(cmd, args)) {
+                if (!RunExeIfExists(cmd, args)) {
+                    if (!RunPowershellIfExists(cmd, args)) {
+                        if (!RunVbsIfExists(cmd, args)) {
                 std::cout << "Command '" << cmd << "' isn't recognized as an internal or external command." << std::endl;
-            }
-        }
-    }
+                    }
+                 }
+             }
+         }
+     }
+ }
 
     WSACleanup();
     return 0;
@@ -3078,16 +3135,29 @@ void CmdSysinfo(const std::string&) {
 
 bool InitializeCOM() {
     HRESULT hr = CoInitializeEx(0, COINIT_MULTITHREADED);
-    if (FAILED(hr)) return false;
+    if (FAILED(hr)) {
+        if (hr == RPC_E_CHANGED_MODE) {
+            std::cerr << "COM already initialized with a different concurrency model.\n";
+        } else {
+            std::cerr << "CoInitializeEx failed. HRESULT = " << std::hex << hr << "\n";
+        }
+        return false;
+    }
 
     hr = CoInitializeSecurity(
         NULL, -1, NULL, NULL,
-        RPC_C_AUTHN_LEVEL_DEFAULT,
+        RPC_C_AUTHN_LEVEL_PKT_PRIVACY,  
         RPC_C_IMP_LEVEL_IMPERSONATE,
         NULL, EOAC_NONE, NULL
     );
+
+    if (FAILED(hr)) {
+        std::cerr << "CoInitializeSecurity failed. HRESULT = " << std::hex << hr << "\n";
+    }
+
     return SUCCEEDED(hr);
 }
+
 
 const wchar_t* DecodeVideoArchitecture(int val) {
     switch (val) {
@@ -3246,101 +3316,136 @@ void CmdGPUInfo(const std::string& args) {
     CoUninitialize();
 }
 
+void PrintVariantString(const VARIANT& var, const std::wstring& label) {
+    std::wcout << label << L": " << (var.vt == VT_BSTR ? var.bstrVal : L"(unknown)") << L"\n";
+}
+
 void CmdBIOSInfo(const std::string& args) {
     if (!InitializeCOM()) {
-        std::cerr << "Failed to initialize COM.\n";
+        std::cerr << ANSI_BOLD_RED "Failed to initialize COM." ANSI_RESET "\n";
         return;
     }
 
-    IWbemLocator *locator = nullptr;
-    IWbemServices *services = nullptr;
+    IWbemLocator* locator = nullptr;
+    IWbemServices* services = nullptr;
 
     HRESULT hr = CoCreateInstance(CLSID_WbemLocator, 0, CLSCTX_INPROC_SERVER,
                                   IID_IWbemLocator, (LPVOID*)&locator);
 
     if (FAILED(hr)) {
-        std::cerr << "Failed to create IWbemLocator.\n";
+        std::cerr << ANSI_BOLD_RED "Failed to create IWbemLocator." ANSI_RESET "\n";
+        CoUninitialize();
         return;
     }
 
     BSTR namespaceStr = SysAllocString(L"ROOT\\CIMV2");
-    hr = locator->ConnectServer(
-        namespaceStr,
-        nullptr,
-        nullptr,
-        nullptr,
-        0,
-        nullptr,
-        nullptr,
-        &services
-    );
+    hr = locator->ConnectServer(namespaceStr, nullptr, nullptr, nullptr, 0, nullptr, nullptr, &services);
     SysFreeString(namespaceStr);
 
     if (FAILED(hr)) {
-        std::cerr << "Failed to connect to WMI.\n";
+        std::cerr << ANSI_BOLD_RED "Failed to connect to WMI." ANSI_RESET "\n";
         locator->Release();
+        CoUninitialize();
         return;
     }
 
-    BSTR wql = SysAllocString(L"WQL");
-    BSTR query = SysAllocString(L"SELECT Manufacturer, SMBIOSBIOSVersion, ReleaseDate FROM Win32_BIOS");
-
-    IEnumWbemClassObject* enumerator = nullptr;
-    hr = services->ExecQuery(
-        wql,
-        query,
-        WBEM_FLAG_FORWARD_ONLY | WBEM_FLAG_RETURN_IMMEDIATELY,
-        nullptr,
-        &enumerator
-    );
-
-    SysFreeString(wql);
-    SysFreeString(query);
+    hr = CoSetProxyBlanket(
+        services, RPC_C_AUTHN_WINNT, RPC_C_AUTHZ_NONE, nullptr,
+        RPC_C_AUTHN_LEVEL_CALL, RPC_C_IMP_LEVEL_IMPERSONATE, nullptr, EOAC_NONE);
 
     if (FAILED(hr)) {
-        std::cerr << "WMI BIOS query failed.\n";
+        std::cerr << ANSI_BOLD_RED "Failed to set proxy blanket." ANSI_RESET "\n";
         services->Release();
         locator->Release();
+        CoUninitialize();
         return;
     }
 
-    IWbemClassObject *obj = nullptr;
-    ULONG returned = 0;
+    auto QueryAndPrint = [&](const wchar_t* wqlQuery, const std::vector<std::wstring>& properties, const std::wstring& header) {
+        BSTR wql = SysAllocString(L"WQL");
+        BSTR query = SysAllocString(wqlQuery);
 
-    while (enumerator) {
-        HRESULT hr = enumerator->Next(WBEM_INFINITE, 1, &obj, &returned);
-        if (!returned) break;
+        IEnumWbemClassObject* enumerator = nullptr;
+        hr = services->ExecQuery(wql, query, WBEM_FLAG_FORWARD_ONLY | WBEM_FLAG_RETURN_IMMEDIATELY, nullptr, &enumerator);
+        SysFreeString(wql);
+        SysFreeString(query);
 
-        VARIANT manuf, version, date;
-        VariantInit(&manuf);
-        VariantInit(&version);
-        VariantInit(&date);
-
-        obj->Get(L"Manufacturer", 0, &manuf, 0, 0);
-        obj->Get(L"SMBIOSBIOSVersion", 0, &version, 0, 0);
-        obj->Get(L"ReleaseDate", 0, &date, 0, 0);
-
-        std::wstring releaseDateStr = L"(unknown)";
-        if (date.vt == VT_BSTR && wcslen(date.bstrVal) >= 8) {
-            std::wstring raw(date.bstrVal);
-            releaseDateStr = raw.substr(0, 4) + L"-" + raw.substr(4, 2) + L"-" + raw.substr(6, 2);
+        if (FAILED(hr)) {
+            std::wcerr << L"\x1b[1;31mQuery failed: \x1b[0m" << header << L"\n";
+            return;
         }
 
-        std::wcout << L"\nBIOS Manufacturer : " << (manuf.vt == VT_BSTR ? manuf.bstrVal : L"(unknown)") << L"\n"
-                   << L"BIOS Version      : " << (version.vt == VT_BSTR ? version.bstrVal : L"(unknown)") << L"\n"
-                   << L"Release Date      : " << releaseDateStr << L"\n";
+        IWbemClassObject* obj = nullptr;
+        ULONG retCount = 0;
+        std::wcout << L"\n" << L"\x1b[1;36m--- " << header << L" ---\x1b[0m" << L"\n";
+        while (enumerator && SUCCEEDED(enumerator->Next(WBEM_INFINITE, 1, &obj, &retCount)) && retCount) {
+            for (const auto& prop : properties) {
+                VARIANT val;
+                VariantInit(&val);
+                obj->Get(prop.c_str(), 0, &val, nullptr, nullptr);
 
-        VariantClear(&manuf);
-        VariantClear(&version);
-        VariantClear(&date);
-        obj->Release();
-    }
+                std::wcout << L"\x1b[33m" << prop << L":\x1b[0m ";
 
-    enumerator->Release();
+                if (prop == L"ReleaseDate" && val.vt == VT_BSTR && wcslen(val.bstrVal) >= 8) {
+                    std::wstring raw(val.bstrVal);
+                    std::wstring dateStr = raw.substr(0,4) + L"-" + raw.substr(4,2) + L"-" + raw.substr(6,2);
+                    std::wcout << L"\x1b[92m" << dateStr << L"\x1b[0m\n";
+                } else {
+                    if (val.vt == VT_BSTR && val.bstrVal)
+                        std::wcout << L"\x1b[92m" << val.bstrVal << L"\x1b[0m\n";
+                    else
+                        std::wcout << L"\x1b[91m(unknown)\x1b[0m\n";
+                }
+
+                VariantClear(&val);
+            }
+            obj->Release();
+            std::wcout << L"\n";
+        }
+        if (enumerator) enumerator->Release();
+    };
+
+    QueryAndPrint(
+        L"SELECT Manufacturer, SMBIOSBIOSVersion, ReleaseDate, SerialNumber, BIOSVersion, SMBIOSMajorVersion, SMBIOSMinorVersion FROM Win32_BIOS",
+        {L"Manufacturer", L"SMBIOSBIOSVersion", L"ReleaseDate", L"SerialNumber", L"BIOSVersion", L"SMBIOSMajorVersion", L"SMBIOSMinorVersion"},
+        L"BIOS Information"
+    );
+
+    QueryAndPrint(
+        L"SELECT Name, Manufacturer, MaxClockSpeed, NumberOfCores, NumberOfLogicalProcessors FROM Win32_Processor",
+        {L"Name", L"Manufacturer", L"MaxClockSpeed", L"NumberOfCores", L"NumberOfLogicalProcessors"},
+        L"CPU Information"
+    );
+
+    QueryAndPrint(
+        L"SELECT Manufacturer, Product, SerialNumber FROM Win32_BaseBoard",
+        {L"Manufacturer", L"Product", L"SerialNumber"},
+        L"Motherboard Information"
+    );
+
+    QueryAndPrint(
+        L"SELECT Caption, Version, BuildNumber FROM Win32_OperatingSystem",
+        {L"Caption", L"Version", L"BuildNumber"},
+        L"Operating System Information"
+    );
+
+    QueryAndPrint(
+        L"SELECT TotalPhysicalMemory FROM Win32_ComputerSystem",
+        {L"TotalPhysicalMemory"},
+        L"Memory Information"
+    );
+
+    QueryAndPrint(
+        L"SELECT Name, DriverVersion FROM Win32_VideoController",
+        {L"Name", L"DriverVersion"},
+        L"GPU Information"
+    );
+
     services->Release();
     locator->Release();
     CoUninitialize();
 }
+
 
 void CmdNetworkAdapters(const std::string& args) {
     if (!InitializeCOM()) {
