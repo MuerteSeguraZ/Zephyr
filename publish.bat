@@ -3,7 +3,7 @@
 git add --all
 
 set MSG=%1
-if "%MSG%"=="" set MSG=Better BIOSInfo and you can run .ps1, .exe and .vbs scripts now
+if "%MSG%"=="" set MSG=HTTP Client (in http folder)
 
 git commit -m "%MSG%"
 

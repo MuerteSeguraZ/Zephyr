@@ -66,6 +66,7 @@
 // Big commands!
 #include "bigcommands/inspect.h"
 #include "list/list.h"
+#include "http/http.h"
 
 #pragma comment(lib, "iphlpapi.lib")
 #pragma comment(lib, "ws2_32.lib")
@@ -228,8 +229,6 @@ void CmdTempClean(const std::string& args);
 void CmdMirror(const std::string& args);
 void CmdKillTree(const std::string& args);
 void CmdPingTest(const std::string& args);
-void CmdHttpPost(const std::string& args);
-void CmdHttpHeader(const std::string& args);
 void CmdScanWrapper(const std::string& args);
 void CmdCheckAdminWrapper(const std::string& args);
 void CmdStat(const std::string& args);
@@ -265,7 +264,6 @@ void CmdStartJob(const std::string& args);
 void CmdClipCopy(const std::string& args);
 void CmdFSize(const std::string& arg);
 bool RunBatchIfExists(const std::string& cmd, const std::string& args);
-void CmdHttpGet(const std::string& url);
 void DeleteContents(const fs::path& dir);
 
 void CmdInspect(const std::string& args) {
@@ -344,6 +342,46 @@ if (subcmd == "listusers") {
     }
  }
 
+void CmdHttp(const std::string& args) {
+    std::istringstream iss(args);
+    std::string subcmd;
+    iss >> subcmd;
+
+    std::string remainingArgs;
+    std::getline(iss, remainingArgs);
+    remainingArgs.erase(0, remainingArgs.find_first_not_of(" \t"));
+
+    if (subcmd == "put") {
+        CmdHttpPut(remainingArgs);
+    } else if (subcmd == "get") {
+        CmdHttpGet(remainingArgs);
+    } else if (subcmd == "post") {
+        CmdHttpPost(remainingArgs);
+    } else if (subcmd == "head") {
+        CmdHttpHeader(remainingArgs);
+    } else if (subcmd == "delete") {
+        CmdHttpDelete(remainingArgs);
+    } else if (subcmd == "patch") {
+        CmdHttpPatch(remainingArgs);
+    } else if (subcmd == "options") {
+        CmdHttpOptions(remainingArgs);
+    } else if (subcmd == "link") {
+        CmdHttpLink(remainingArgs);
+    } else if (subcmd == "unlink") {
+        CmdHttpUnlink(remainingArgs);
+    } else if (subcmd == "trace") {
+        CmdHttpTrace(remainingArgs);
+    } else if (subcmd == "connect") {
+        CmdHttpConnect(remainingArgs);
+    } else if (subcmd == "propfind") {
+        CmdHttpPropFind(remainingArgs);
+    } else if (subcmd == "help" || subcmd == "?") {
+        CmdHttpHelp(remainingArgs);
+    } else {
+        CmdHttpHelp(remainingArgs);
+    }
+}
+
 std::unordered_map<std::string, std::function<void(const std::string&)>> commands = {
     {"list", CmdList}, {"tree", CmdTreeList}, {"send", CmdSend}, {"zap", CmdZap}, {"fzap", CmdFZap}, {"fhash", CmdFHash}, {"shift", CmdShift},
     {"mkplace", CmdMkplace}, {"clear", CmdClear}, {"bye", CmdBye},
@@ -359,14 +397,14 @@ std::unordered_map<std::string, std::function<void(const std::string&)>> command
     {"smlink", CmdSmLink}, {"procmon", CmdProcMon}, 
     {"cpuinfo", CmdCpuInfo}, {"uptime", CmdUptime}, {"netstat", CmdNetstat}, {"mirror", CmdMirror}, 
     {"tempclean", CmdTempClean}, {"killtree", CmdKillTree}, {"pingtest", CmdPingTest}, 
-    {"get", CmdHttpGet}, {"post", CmdHttpPost}, {"header", CmdHttpHeader}, {"scan", CmdScanWrapper}, {"hop", CmdHop}, {"stat", CmdStat}, {"fmeta", CmdFMeta}, {"fsize", CmdFSize},
+    {"scan", CmdScanWrapper}, {"hop", CmdHop}, {"stat", CmdStat}, {"fmeta", CmdFMeta}, {"fsize", CmdFSize},
     {"checkadmin", CmdCheckAdminWrapper}, {"dnsflush", CmdDnsFlush},
     {"firewall", CmdFirewallStatus}, {"drives", CmdDrives}, {"smart", CmdSmartStatus}, {"lsusb", CmdLsusb},
     {"tar", CmdTar}, {"gzip", CmdGzip}, {"gunzip", CmdGunzip}, {"zip", CmdZip}, {"unzip", CmdUnzip}, 
     {"grep", CmdGrep}, {"sed", CmdSed}, {"basename", CmdBasename}, {"head", CmdHead}, {"tail", CmdTail}, {"wc", CmdWc}, {"loadavg", CmdLoadAvg}, {"winloadavg", CmdWinLoadAvg},
     {"mounts", CmdMounts}, {"gpuinfo", CmdGPUInfo}, {"biosinfo", CmdBIOSInfo}, {"raminfo", CmdRamInfo}, {"userinfo", CmdUserInfo}, {"whoami", CmdWhoAmI}, {"groups", CmdGroups}, {"hexdump", CmdHexdump},
     {"jobs", CmdJobs}, {"bgjob", CmdBgJob}, {"fgjob", CmdFgJob}, {"stopjob", CmdStopJob}, {"startjob", CmdStartJob}, {"clipcopy", CmdClipCopy},
-    {"inspect", CmdInspect}, {"usermgmt", CmdUserMgmt}
+    {"inspect", CmdInspect}, {"usermgmt", CmdUserMgmt}, {"http", CmdHttp}
 };
 
 
@@ -381,6 +419,8 @@ void EnableVirtualTerminalProcessing() {
     SetConsoleMode(hOut, dwMode);
 }
 
+// Executables
+
 bool RunExeIfExists(const std::string& command, const std::string& args) {
     namespace fs = std::filesystem;
 
@@ -392,11 +432,13 @@ bool RunExeIfExists(const std::string& command, const std::string& args) {
             fullCmd += " " + args;
         }
         int ret = std::system(fullCmd.c_str());
-        return (ret == 0);  // true if command succeeded
+        return (ret == 0);  
     } else {
         return false;
     }
 }
+
+// Powershell
 
 bool RunPowershellIfExists(const std::string& command, const std::string& args) {
     namespace fs = std::filesystem;
@@ -415,23 +457,127 @@ bool RunPowershellIfExists(const std::string& command, const std::string& args) 
     }
 }
 
+// VBScript
+
 bool RunVbsIfExists(const std::string& command, const std::string& args) {
     namespace fs = std::filesystem;
 
-    std::stirng vbsFilename = command + ".vbs";
+    std::string vbsFilename = command + ".vbs";
 
     if (fs::exists(vbsFilename)) {
-        std::string fullCmd = "cscript.exe //NoLogo \"" + vbsFilename "\"";
+        std::string fullCmd = "cscript.exe //NoLogo \"" + vbsFilename + "\"";
         if (!args.empty()) {
             fullCmd += " " + args;
         }
-        std::system(fullCmd.c_stra());
+        std::system(fullCmd.c_str());
         return true;
     } else {
         return false;
     }
 }
 
+// Shell (.sh) files
+
+bool RunShellIfExists(const std::string& command, const std::string& args) {
+    namespace fs = std::filesystem;
+
+    std::string shFilename = command + ".sh";
+
+    if (fs::exists(shFilename)) {
+        std::string fullCmd = "bash \"" + shFilename + "\"";
+        if (!args.empty()) {
+            fullCmd += " " + args;
+        }
+        std::system(fullCmd.c_str());
+        return true;
+        } else {
+            return false;
+        }
+}
+
+// Python
+
+bool RunPythonIfExists(const std::string& command, const std::string& args) {
+    namespace fs = std::filesystem;
+
+    std::string pyFilename = command + ".py";
+
+    if (fs::exists(pyFilename)) {
+        std::string fullCmd = "py \"" + pyFilename + "\"";
+        if (!args.empty()) {
+            fullCmd += " " + args;
+        }
+        std::system(fullCmd.c_str());
+        return true;
+    } else {
+        return false;
+    }
+} 
+
+// JavaScript
+
+bool RunJavaScriptIfExists(const std::string& command, const std::string& args) {
+    namespace fs = std::filesystem;
+
+    std::string jsFilename = command + ".js";
+
+    if (fs::exists(jsFilename)) {
+        std::string fullCmd = "node \"" + jsFilename + "\"";
+        if (!args.empty()) {
+            fullCmd += " " + args;
+        }
+        std::system(fullCmd.c_str());
+        return true;
+    } else {
+        return false;
+    }
+}
+
+// C++
+
+bool RunCppIfExists(const std::string& command, const std::string& args) {
+    namespace fs = std::filesystem;
+
+    std::string cppFilename = command + ".cpp";
+
+    if (fs::exists(cppFilename)) {
+        std::string compileCmd = "g++ \"" + cppFilename + "\" -o temp.exe";
+        if (std::system(compileCmd.c_str()) != 0) {
+            return false;
+        }
+
+        std::string runCmd = "temp.exe";
+        if (!args.empty()) {
+            runCmd += " " + args;
+        }
+        std::system(runCmd.c_str());
+
+        std::remove("temp.exe");
+
+        return true;
+    } else {
+        return false;
+    }
+}
+
+// ZShell (.zsh)
+
+bool RunZshIfExists(const std::string& command, std::string& args) {
+    namespace fs = std::filesystem;
+
+    std::string zshFilename = command + ".zsh";
+
+    if (fs::exists(zshFilename)) {
+        std::string fullCmd = "zsh \"" + zshFilename + "\"";
+        if (!args.empty()) {
+            fullCmd += " " + args;
+        }
+        std::system(fullCmd.c_str());
+        return true;
+    } else {
+        return false;
+    }
+}
 
 int main() {
     EnableVirtualTerminalProcessing();
@@ -457,13 +603,21 @@ int main() {
                 if (!RunExeIfExists(cmd, args)) {
                     if (!RunPowershellIfExists(cmd, args)) {
                         if (!RunVbsIfExists(cmd, args)) {
-                std::cout << "Command '" << cmd << "' isn't recognized as an internal or external command." << std::endl;
+                            if (!RunShellIfExists(cmd, args)) {
+                                if (!RunPythonIfExists(cmd, args)) {
+                                    if (!RunJavaScriptIfExists(cmd, args)) {
+                                        if (!RunZshIfExists(cmd, args)) {
+                                            std::cout << "Command '" << cmd << "' isn't recognized as an internal or external command." << std::endl;
+                                    }
+                                }
+                            }
+                        }
                     }
-                 }
-             }
-         }
-     }
- }
+                }
+            }
+        }
+    }  
+} 
 
     WSACleanup();
     return 0;
@@ -1491,298 +1645,6 @@ void CmdNetstat(const std::string& args) {
         }
     }
     free(udpTable);
-}
-
-void CmdHttpGet(const std::string& url) {
-    HINTERNET hSession = WinHttpOpen(L"Zephyr/1.0", WINHTTP_ACCESS_TYPE_DEFAULT_PROXY, WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
-    if (!hSession) {
-        std::cout << "Failed to open WinHTTP session\n";
-        return;
-    }
-
-    URL_COMPONENTS urlComp = { sizeof(urlComp) };
-    wchar_t host[256], path[1024];
-    urlComp.lpszHostName = host;
-    urlComp.dwHostNameLength = 256;
-    urlComp.lpszUrlPath = path;
-    urlComp.dwUrlPathLength = 1024;
-
-    std::wstring wurl(url.begin(), url.end());
-    WinHttpCrackUrl(wurl.c_str(), wurl.length(), 0, &urlComp);
-
-    HINTERNET hConnect = WinHttpConnect(hSession, urlComp.lpszHostName, urlComp.nPort, 0);
-    HINTERNET hRequest = WinHttpOpenRequest(hConnect, L"GET", urlComp.lpszUrlPath, nullptr, WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES, (urlComp.nScheme == INTERNET_SCHEME_HTTPS) ? WINHTTP_FLAG_SECURE : 0);
-
-    if (WinHttpSendRequest(hRequest, WINHTTP_NO_ADDITIONAL_HEADERS, 0, nullptr, 0, 0, 0)
-        && WinHttpReceiveResponse(hRequest, nullptr)) {
-        DWORD dwSize = 0;
-        do {
-            DWORD dwDownloaded = 0;
-            if (!WinHttpQueryDataAvailable(hRequest, &dwSize)) break;
-            std::vector<char> buffer(dwSize + 1);
-            if (!WinHttpReadData(hRequest, buffer.data(), dwSize, &dwDownloaded)) break;
-            buffer[dwDownloaded] = '\0';
-            std::cout << buffer.data();
-        } while (dwSize > 0);
-    } else {
-        std::cout << "HTTP GET failed.\n";
-    }
-
-    WinHttpCloseHandle(hRequest);
-    WinHttpCloseHandle(hConnect);
-    WinHttpCloseHandle(hSession);
-}
-
-std::wstring ToWString(const std::string& str) {
-    if (str.empty()) return std::wstring();
-    int size_needed = MultiByteToWideChar(CP_UTF8, 0, str.data(), (int)str.size(), NULL, 0);
-    if (size_needed <= 0) return std::wstring();
-    std::wstring wstr(size_needed, 0);
-    MultiByteToWideChar(CP_UTF8, 0, str.data(), (int)str.size(), &wstr[0], size_needed);
-    return wstr;
-}
-
-std::string Trim(const std::string& s) {
-    size_t start = s.find_first_not_of(" \t\n\r");
-    size_t end = s.find_last_not_of(" \t\n\r");
-    if (start == std::string::npos) return "";
-    return s.substr(start, end - start + 1);
-}
-
-void CmdHttpPost(const std::string& args) {
-    std::vector<std::string> tokens;
-    std::regex re(R"((\"([^\"\\]|\\.)*\"|\S+))");
-    auto begin = std::sregex_iterator(args.begin(), args.end(), re);
-    auto end = std::sregex_iterator();
-    for (auto it = begin; it != end; ++it) {
-        std::string token = (*it)[1].str();
-        if (!token.empty() && token.front() == '"' && token.back() == '"') {
-            token = token.substr(1, token.length() - 2);  
-        }
-        tokens.push_back(token);
-    }
-
-    std::string url, body;
-    std::vector<std::wstring> headers;
-    std::wstring contentTypeOverride;
-
-    for (size_t i = 0; i < tokens.size(); ++i) {
-        const std::string& token = tokens[i];
-        if (token == "-H" && i + 1 < tokens.size()) {
-            headers.push_back(ToWString(tokens[++i]));
-        } else if (token == "-T" && i + 1 < tokens.size()) {
-            contentTypeOverride = ToWString(tokens[++i]);
-        } else if (token == "-d" && i + 1 < tokens.size()) {
-            body = tokens[++i];
-        } else if (token.rfind("-", 0) != 0 && url.empty()) {
-            url = Trim(token);
-        }
-    }
-
-    if (url.empty() || body.empty()) {
-        std::cout << "Error:\nError: Usage: post [-H \"Header\"] [-T content-type] -d <body> <url>\n";
-        return;
-    }
-
-    std::wstring finalContentType;
-    if (!contentTypeOverride.empty()) {
-        finalContentType = L"Content-Type: " + contentTypeOverride + L"\r\n";
-    } else if (!body.empty() && (body[0] == '{' || body[0] == '[')) {
-        finalContentType = L"Content-Type: application/json\r\n";
-    } else {
-        finalContentType = L"Content-Type: application/x-www-form-urlencoded\r\n";
-    }
-    headers.insert(headers.begin(), finalContentType);
-
-    std::wstring wurl = ToWString(url);
-    std::wcout << L"Debug: URL = " << wurl << L"\n";
-
-    HINTERNET hSession = WinHttpOpen(L"Zephyr/1.0", WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
-                                    WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
-    if (!hSession) {
-        std::cout << "Error:\nError: Failed to open WinHTTP session\n";
-        return;
-    }
-
-    URL_COMPONENTS urlComp = { sizeof(urlComp) };
-    wchar_t host[256] = {0};
-    wchar_t path[1024] = {0};
-    urlComp.lpszHostName = host;
-    urlComp.dwHostNameLength = _countof(host);
-    urlComp.lpszUrlPath = path;
-    urlComp.dwUrlPathLength = _countof(path);
-
-    if (!WinHttpCrackUrl(wurl.c_str(), (DWORD)-1, 0, &urlComp)) {
-        std::cout << "Error:\nError: Invalid URL\n";
-        WinHttpCloseHandle(hSession);
-        return;
-    }
-
-    HINTERNET hConnect = WinHttpConnect(hSession, urlComp.lpszHostName, urlComp.nPort, 0);
-    if (!hConnect) {
-        std::cout << "Error:\nError: Connection failed\n";
-        WinHttpCloseHandle(hSession);
-        return;
-    }
-
-    HINTERNET hRequest = WinHttpOpenRequest(hConnect, L"POST", urlComp.lpszUrlPath,
-                                           nullptr, WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES,
-                                           (urlComp.nScheme == INTERNET_SCHEME_HTTPS) ? WINHTTP_FLAG_SECURE : 0);
-    if (!hRequest) {
-        std::cout << "Error:\nError: Failed to open request\n";
-        WinHttpCloseHandle(hConnect);
-        WinHttpCloseHandle(hSession);
-        return;
-    }
-
-    std::wstring allHeaders;
-    for (const auto& h : headers) {
-        allHeaders += h + L"\r\n";
-    }
-
-    BOOL bResults = WinHttpSendRequest(hRequest,
-                                       allHeaders.c_str(), (DWORD)allHeaders.length(),
-                                       (LPVOID)body.data(), (DWORD)body.size(),
-                                       (DWORD)body.size(), 0);
-
-    if (bResults && WinHttpReceiveResponse(hRequest, nullptr)) {
-        std::cout << "Success:\nResponse:\n";
-
-        DWORD dwSize = 0;
-        do {
-            if (!WinHttpQueryDataAvailable(hRequest, &dwSize)) {
-                std::cout << "Error: Failed to query data available.\n";
-                break;
-            }
-            if (dwSize == 0) {
-                break; 
-            }
-
-            std::vector<char> buffer(dwSize + 1, 0);
-            DWORD dwDownloaded = 0;
-            if (!WinHttpReadData(hRequest, buffer.data(), dwSize, &dwDownloaded)) {
-                std::cout << "Error: Failed to read data.\n";
-                break;
-            }
-
-            std::cout << std::string(buffer.data(), dwDownloaded);
-        } while (dwSize > 0);
-
-        std::cout << std::endl;
-
-    } else {
-        DWORD error = GetLastError();
-        std::cout << "Error:\nError: HTTP POST failed (code " << error << ")\n";
-    }
-
-    WinHttpCloseHandle(hRequest);
-    WinHttpCloseHandle(hConnect);
-    WinHttpCloseHandle(hSession);
-}
-
-void CmdHttpHeader(const std::string& args) {
-    std::vector<std::string> tokens;
-    std::regex re(R"((\"([^\"\\]|\\.)*\"|\S+))");
-    auto begin = std::sregex_iterator(args.begin(), args.end(), re);
-    auto end = std::sregex_iterator();
-    for (auto it = begin; it != end; ++it) {
-        std::string token = (*it)[1].str();
-        if (!token.empty() && token.front() == '"' && token.back() == '"') {
-            token = token.substr(1, token.length() - 2);
-        }
-        tokens.push_back(token);
-    }
-
-    std::string url;
-    std::vector<std::wstring> headers;
-
-    for (size_t i = 0; i < tokens.size(); ++i) {
-        if (tokens[i] == "-H" && i + 1 < tokens.size()) {
-            headers.push_back(ToWString(tokens[++i]));
-        } else if (tokens[i].rfind("-", 0) != 0 && url.empty()) {
-            url = tokens[i];
-        }
-    }
-
-    if (url.empty()) {
-        std::cout << "Error:\nError: Usage: header [-H \"Header\"] <url>\n";
-        return;
-    }
-
-    std::wstring wurl = ToWString(url);
-
-    HINTERNET hSession = WinHttpOpen(L"Zephyr/1.0", WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
-                                    WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
-    if (!hSession) {
-        std::cout << "Error:\nError: Failed to open WinHTTP session\n";
-        return;
-    }
-
-    URL_COMPONENTS urlComp = { sizeof(urlComp) };
-    wchar_t host[256] = {0};
-    wchar_t path[1024] = {0};
-    urlComp.lpszHostName = host;
-    urlComp.dwHostNameLength = _countof(host);
-    urlComp.lpszUrlPath = path;
-    urlComp.dwUrlPathLength = _countof(path);
-
-    if (!WinHttpCrackUrl(wurl.c_str(), (DWORD)-1, 0, &urlComp)) {
-        std::cout << "Error:\nError: Invalid URL\n";
-        WinHttpCloseHandle(hSession);
-        return;
-    }
-
-    HINTERNET hConnect = WinHttpConnect(hSession, urlComp.lpszHostName, urlComp.nPort, 0);
-    if (!hConnect) {
-        std::cout << "Error:\nError: Connection failed\n";
-        WinHttpCloseHandle(hSession);
-        return;
-    }
-
-    HINTERNET hRequest = WinHttpOpenRequest(hConnect, L"HEAD", urlComp.lpszUrlPath,
-                                           nullptr, WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES,
-                                           (urlComp.nScheme == INTERNET_SCHEME_HTTPS) ? WINHTTP_FLAG_SECURE : 0);
-    if (!hRequest) {
-        std::cout << "Error:\nError: Failed to open request\n";
-        WinHttpCloseHandle(hConnect);
-        WinHttpCloseHandle(hSession);
-        return;
-    }
-
-    std::wstring allHeaders;
-    for (const auto& h : headers) {
-        allHeaders += h + L"\r\n";
-    }
-
-    BOOL bResults = WinHttpSendRequest(hRequest,
-                                       allHeaders.empty() ? nullptr : allHeaders.c_str(),
-                                       (DWORD)allHeaders.length(),
-                                       nullptr, 0, 0, 0);
-
-    if (bResults && WinHttpReceiveResponse(hRequest, nullptr)) {
-        DWORD headersSize = 0;
-        WinHttpQueryHeaders(hRequest, WINHTTP_QUERY_RAW_HEADERS_CRLF,
-                           WINHTTP_HEADER_NAME_BY_INDEX, nullptr, &headersSize, WINHTTP_NO_HEADER_INDEX);
-
-        if (GetLastError() == ERROR_INSUFFICIENT_BUFFER) {
-            std::wstring headersStr(headersSize / sizeof(wchar_t), L'\0');
-            if (WinHttpQueryHeaders(hRequest, WINHTTP_QUERY_RAW_HEADERS_CRLF,
-                                   WINHTTP_HEADER_NAME_BY_INDEX, &headersStr[0], &headersSize, WINHTTP_NO_HEADER_INDEX)) {
-                std::wcout << L"Success:\nResponse headers:\n" << headersStr << L"\n";
-            } else {
-                std::cout << "Error:\nError: Failed to read response headers\n";
-            }
-        } else {
-            std::cout << "Error:\nError: Failed to query response headers size\n";
-        }
-    } else {
-        DWORD error = GetLastError();
-        std::cout << "Error:\nError: HTTP HEAD failed (code " << error << ")\n";
-    }
-
-    WinHttpCloseHandle(hRequest);
-    WinHttpCloseHandle(hConnect);
-    WinHttpCloseHandle(hSession);
 }
 
 void DeleteContents(const fs::path& dir) {
@@ -4858,7 +4720,6 @@ void CmdHelp(const std::string&) {
     "| stat <filename>     - Prints statistics of a given file                                          |\n"
     "| cutemessage         - This is for my gf guys please don't run it                                 |\n"
     "| checkadmin          - Check if the process is running as admin                                   |\n"
-    "| listusers           - Lists all active users in a PC                                             |\n"
     "| dnsflush            - Flush DNS resolver cache                                                   |\n"
     "| firewall            - Show Windows firewall status                                               |\n"
     "| drives              - List all available logical drives                                          |\n"
@@ -4882,9 +4743,9 @@ void CmdHelp(const std::string&) {
     "| stopjob <job_id>    - Stop a running job by its ID.                                              |\n"
     "| bgjob               - Move a job to the background by ID                                         |\n"
     "| fgjob               - Move a job to the foreground by ID                                         |\n"
-    "| clipcopy <file|text>- Copy file contents or raw text to the clipboard                           |\n"
-    "| inspect             - Run this to get the inspect help command."
-    "| You can also run .bat files. Only type the name if its in the current directory.                 |\n"
+    "| clipcopy <file|text>- Copy file contents or raw text to the clipboard                            |\n"
+    "| inspect             - Run this to get the inspect help command.                                  |\n"                                 
+    "| You can also run .bat, .exe, .ps1, .py, .js, .cpp and .vbs files.                                |\n"
     "========================================================================================================================\n"
     "| grep - grep searches for patterns in files; flags modify behavior like case (-i), invert (-v), line numbers (-n), and recursion (-r).\n"
     "| sed s/old/new/[flags] <file> - sed replaces text in a file; flags control scope and case sensitivity.\n"
