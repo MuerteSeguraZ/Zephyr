@@ -3591,7 +3591,7 @@ void CmdWinLoadAvg(const std::string&) {
 
 void CmdVersion(const std::string&) {
     printf("Zephyr Version 1.0.2\n");
-    printf("Update: Hop (cd) command added!!!\n");
+    printf("Update: HTTP Client!\n");
     printf("Built on %s at %s\n", __DATE__, __TIME__);
     printf("Using Windows API: %s\n", _WIN32_WINNT >= 0x0601 ? "Windows 7+" : "Older version");
     printf("Using C++ Standard: %s\n", __cplusplus == 201703L ? "C++17" : "Unknown");
