@@ -3,7 +3,6 @@ const http = require('http');
 let cachedContent = "Hello, world! This is cached content.";
 
 const server = http.createServer((req, res) => {
-  // Check for method override header
   const overriddenMethod = req.headers['x-http-method-override'];
   const method = (overriddenMethod || req.method).toUpperCase();
 
