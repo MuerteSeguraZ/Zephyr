@@ -28,11 +28,11 @@ Send and analyze various HTTP requests directly from your shell:
 
 ### 👤 User & Session Management
 Inspect and manage user accounts, groups, and active sessions:
-- `listusers`, `listlocalusers`, `listadmins`, `listprofiles`
-- `listgroups`, `listlocalgroups`, `listgroupmembers [groupname]`
-- `listloggedin`, `listremotesessions [-all|-active|-user <name>]`
-- `listuserdetails [username]`, `listnetworkusers`
-- `listdomains`, `listprocessusers`, `listprivileges`
+- `usermgmt listusers`, `usermgmt listlocalusers`, `usermgmt listadmins`, `usermgmt listprofiles`
+- `usermgmt listgroups`, `usermgmt listlocalgroups`, `usermgmt listgroupmembers [groupname]`
+- `usermgmt listloggedin`, `usermgmt listremotesessions [-all|-active|-user <name>]`
+- `usermgmt listuserdetails [username]`, `usermgmt listnetworkusers`
+- `usermgmt listdomains`, `usermgmt listprocessusers`, `usermgmt listprivileges`
 
 ---
 
