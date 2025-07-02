@@ -11,7 +11,8 @@
 #include <cstdint>  
 #include <locale>
 #include <codecvt>
-
+#include <fstream>
+#include <algorithm>
 
 #define ANSI_BLACK         "\x1b[30m"
 #define ANSI_RED           "\x1b[31m"
@@ -60,6 +61,22 @@ std::string WideToUtf8(const std::wstring& wstr) {
 std::wstring NormalStringToWideString(const std::string& str) {
     std::wstring_convert<std::codecvt_utf8_utf16<wchar_t>> conv;
     return conv.from_bytes(str);
+}
+
+std::string WideStringToNormal(const std::wstring& wstr) {
+    if (wstr.empty()) return "";
+    int size_needed = WideCharToMultiByte(CP_UTF8, 0, wstr.data(), (int)wstr.size(), nullptr, 0, nullptr, nullptr);
+    std::string strTo(size_needed, 0);
+    WideCharToMultiByte(CP_UTF8, 0, wstr.data(), (int)wstr.size(), &strTo[0], size_needed, nullptr, nullptr);
+    return strTo;
+}
+
+std::wstring ToWideString(const std::string& s) {
+    if (s.empty()) return std::wstring();
+    int size_needed = MultiByteToWideChar(CP_UTF8, 0, s.c_str(), (int)s.size(), nullptr, 0);
+    std::wstring wstrTo(size_needed, 0);
+    MultiByteToWideChar(CP_UTF8, 0, s.c_str(), (int)s.size(), &wstrTo[0], size_needed);
+    return wstrTo;
 }
 
 std::vector<uint8_t> ToUtf8Bytes(const std::string& str) {
@@ -245,27 +262,21 @@ void CmdHttpPut(const std::string& args) {
 struct WinHttpHandle {
     HINTERNET handle = nullptr;
 
-    // Default constructor
     WinHttpHandle() = default;
 
-    // Constructor from raw handle
     explicit WinHttpHandle(HINTERNET h) : handle(h) {}
 
-    // Destructor
     ~WinHttpHandle() {
         if (handle) WinHttpCloseHandle(handle);
     }
 
-    // No copy
     WinHttpHandle(const WinHttpHandle&) = delete;
     WinHttpHandle& operator=(const WinHttpHandle&) = delete;
 
-    // Move constructor
     WinHttpHandle(WinHttpHandle&& other) noexcept : handle(other.handle) {
         other.handle = nullptr;
     }
 
-    // Move assignment
     WinHttpHandle& operator=(WinHttpHandle&& other) noexcept {
         static_assert(std::is_same_v<decltype(other), WinHttpHandle&&>, "other is not WinHttpHandle&&");
         if (this != std::addressof(other)) {
@@ -780,7 +791,6 @@ void CmdHttpDelete(const std::string& args) {
 }
 
 void CmdHttpPatch(const std::string& args) {
-    // Tokenize args respecting quoted strings
     std::vector<std::string> tokens;
     std::regex re(R"((\"([^\"\\]|\\.)*\"|\S+))");
     auto begin = std::sregex_iterator(args.begin(), args.end(), re);
@@ -852,13 +862,11 @@ void CmdHttpPatch(const std::string& args) {
         return;
     }
 
-    // Concatenate headers with CRLF
     std::wstring allHeaders;
     for (const auto& h : headers) {
         allHeaders += h + L"\r\n";
     }
 
-    // Convert body to UTF-8 bytes (raw bytes, not wchar_t)
     std::vector<uint8_t> bodyBytes = ToUtf8Bytes(body);
 
     BOOL bResults = WinHttpSendRequest(hRequest,
@@ -879,7 +887,6 @@ void CmdHttpPatch(const std::string& args) {
             std::cout << "Success:\nHTTP PATCH request sent, but failed to get status code\n";
         }
 
-        // Get size of raw headers
         DWORD headersSize = 0;
         WinHttpQueryHeaders(hRequest, WINHTTP_QUERY_RAW_HEADERS_CRLF,
                            nullptr, nullptr, &headersSize, WINHTTP_NO_HEADER_INDEX);
@@ -904,7 +911,6 @@ void CmdHttpPatch(const std::string& args) {
 }
 
 void CmdHttpOptions(const std::string& args) {
-    // Parse args: split by spaces but keep quoted strings intact
     std::vector<std::string> tokens;
     std::regex re(R"((\"([^\"\\]|\\.)*\"|\S+))");
     auto begin = std::sregex_iterator(args.begin(), args.end(), re);
@@ -973,7 +979,6 @@ void CmdHttpOptions(const std::string& args) {
         return;
     }
 
-    // Combine headers into one string with CRLF
     std::wstring allHeaders;
     for (const auto& h : headers) {
         allHeaders += h + L"\r\n";
@@ -995,7 +1000,6 @@ void CmdHttpOptions(const std::string& args) {
         }
 
         DWORD headersSize = 0;
-        // First call to get the buffer size needed
         WinHttpQueryHeaders(hRequest, WINHTTP_QUERY_RAW_HEADERS_CRLF,
                            nullptr, nullptr, &headersSize, WINHTTP_NO_HEADER_INDEX);
 
@@ -1033,7 +1037,6 @@ bool ParseUrl(const std::wstring& url, URL_COMPONENTS& urlComp) {
 }
 
 void CmdHttpLink(const std::string& args) {
-    // Parse args same way as OPTIONS
     std::vector<std::string> tokens;
     std::regex re(R"((\"([^\"\\]|\\.)*\"|\S+))");
     auto begin = std::sregex_iterator(args.begin(), args.end(), re);
@@ -1092,7 +1095,6 @@ void CmdHttpLink(const std::string& args) {
         return;
     }
 
-    // For custom verbs like LINK, use WINHTTP_FLAG_BYPASS_PROXY_CACHE flag to avoid Error 87
     DWORD flags = (urlComp.nScheme == INTERNET_SCHEME_HTTPS) ? (WINHTTP_FLAG_SECURE | WINHTTP_FLAG_BYPASS_PROXY_CACHE) : WINHTTP_FLAG_BYPASS_PROXY_CACHE;
 
     HINTERNET hRequest = WinHttpOpenRequest(hConnect, L"LINK", urlComp.lpszUrlPath,
@@ -1105,7 +1107,6 @@ void CmdHttpLink(const std::string& args) {
         return;
     }
 
-    // Combine headers into one string with CRLF
     std::wstring allHeaders;
     for (const auto& h : headers) {
         allHeaders += h + L"\r\n";
@@ -1150,7 +1151,6 @@ void CmdHttpLink(const std::string& args) {
 }
 
 void CmdHttpUnlink(const std::string& args) {
-    // Parse args: split by spaces but keep quoted strings intact
     std::vector<std::string> tokens;
     std::regex re(R"((\"([^\"\\]|\\.)*\"|\S+))");
     auto begin = std::sregex_iterator(args.begin(), args.end(), re);
@@ -1215,7 +1215,6 @@ void CmdHttpUnlink(const std::string& args) {
         return;
     }
 
-    // Combine headers into one string with CRLF
     std::wstring allHeaders;
     for (const auto& h : headers) {
         allHeaders += h + L"\r\n";
@@ -1256,7 +1255,6 @@ void CmdHttpUnlink(const std::string& args) {
 }
 
 void CmdHttpTrace(const std::string& args) {
-    // Parse args: split by spaces but keep quoted strings intact
     std::vector<std::string> tokens;
     std::regex re(R"((\"([^\"\\]|\\.)*\"|\S+))");
     auto begin = std::sregex_iterator(args.begin(), args.end(), re);
@@ -1321,7 +1319,6 @@ void CmdHttpTrace(const std::string& args) {
         return;
     }
 
-    // Add headers one by one using WinHttpAddRequestHeaders
     for (const auto& h : headers) {
         if (!WinHttpAddRequestHeaders(hRequest.get(), h.c_str(), (DWORD)-1, WINHTTP_ADDREQ_FLAG_ADD)) {
             std::cout << "Error:\nFailed to add header: " << WideToUtf8(h) << "\n";
@@ -1329,7 +1326,6 @@ void CmdHttpTrace(const std::string& args) {
         }
     }
 
-    // Send request with nullptr headers param
     BOOL bResults = WinHttpSendRequest(
         hRequest.get(),
         nullptr,
@@ -1373,13 +1369,46 @@ std::vector<std::wstring> ParseHeaders(const std::vector<std::string>& headerArg
     return headers;
 }
 
-// Print last WinHTTP error with context
 void PrintWinHttpError(const std::string& context) {
     DWORD err = GetLastError();
     std::cerr << context << " failed with error: " << err << std::endl;
 }
 
+static HINTERNET g_hSession = nullptr;
+static HINTERNET g_hConnect = nullptr;
+static HINTERNET g_hRequest = nullptr;
+
 void CmdHttpConnect(const std::string& args) {
+    if (args == "exit") {
+        if (g_hRequest) {
+            WinHttpCloseHandle(g_hRequest);
+            g_hRequest = nullptr;
+        }
+        if (g_hConnect) {
+            WinHttpCloseHandle(g_hConnect);
+            g_hConnect = nullptr;
+        }
+        if (g_hSession) {
+            WinHttpCloseHandle(g_hSession);
+            g_hSession = nullptr;
+        }
+        std::cout << "Connection tunnel closed." << std::endl;
+        return;
+    }
+
+    if (g_hRequest) {
+        WinHttpCloseHandle(g_hRequest);
+        g_hRequest = nullptr;
+    }
+    if (g_hConnect) {
+        WinHttpCloseHandle(g_hConnect);
+        g_hConnect = nullptr;
+    }
+    if (g_hSession) {
+        WinHttpCloseHandle(g_hSession);
+        g_hSession = nullptr;
+    }
+
     std::istringstream iss(args);
     std::string proxy, target;
 
@@ -1389,7 +1418,6 @@ void CmdHttpConnect(const std::string& args) {
         return;
     }
 
-    // Collect headers
     std::vector<std::string> headersArgs;
     while (iss >> std::ws) {
         if (iss.peek() == '-') {
@@ -1411,7 +1439,6 @@ void CmdHttpConnect(const std::string& args) {
         }
     }
 
-    // Parse target
     size_t colonPos = target.find(':');
     if (colonPos == std::string::npos) {
         std::cout << "Invalid target format, must be host:port\n";
@@ -1420,98 +1447,101 @@ void CmdHttpConnect(const std::string& args) {
 
     std::string targetHost = target.substr(0, colonPos);
     std::string targetPortStr = target.substr(colonPos + 1);
-    int targetPort = std::stoi(targetPortStr);
+    int targetPort = 0;
+    try {
+        targetPort = std::stoi(targetPortStr);
+    } catch (...) {
+        std::cout << "Invalid target port\n";
+        return;
+    }
     if (targetPort <= 0 || targetPort > 65535) {
         std::cout << "Invalid target port\n";
         return;
     }
 
-    // Proxy string must be in the format "http=host:port" for WinHttp
     std::wstring wProxy = NormalStringToWideString("http=" + proxy);
     std::wstring wTargetHost = NormalStringToWideString(targetHost);
 
-    // Open session with proxy
-    HINTERNET hSession = WinHttpOpen(L"Zephyr/1.0",
+    g_hSession = WinHttpOpen(L"Zephyr/1.0",
         WINHTTP_ACCESS_TYPE_NAMED_PROXY,
         wProxy.c_str(),
         WINHTTP_NO_PROXY_BYPASS, 0);
-    if (!hSession) {
+    if (!g_hSession) {
         PrintWinHttpError("WinHttpOpen");
         return;
     }
 
-    // Connect to target host
-    HINTERNET hConnect = WinHttpConnect(hSession, wTargetHost.c_str(), targetPort, 0);
-    if (!hConnect) {
+    g_hConnect = WinHttpConnect(g_hSession, wTargetHost.c_str(), targetPort, 0);
+    if (!g_hConnect) {
         PrintWinHttpError("WinHttpConnect");
-        WinHttpCloseHandle(hSession);
+        WinHttpCloseHandle(g_hSession);
+        g_hSession = nullptr;
         return;
     }
 
-    // Open CONNECT request
-    HINTERNET hRequest = WinHttpOpenRequest(hConnect, L"CONNECT", nullptr,
-        nullptr, WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES, 0);
-    if (!hRequest) {
+    g_hRequest = WinHttpOpenRequest(g_hConnect, L"GET", nullptr,
+        nullptr, WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES,
+        WINHTTP_FLAG_SECURE);
+    if (!g_hRequest) {
         PrintWinHttpError("WinHttpOpenRequest");
-        WinHttpCloseHandle(hConnect);
-        WinHttpCloseHandle(hSession);
+        WinHttpCloseHandle(g_hConnect);
+        WinHttpCloseHandle(g_hSession);
+        g_hConnect = nullptr;
+        g_hSession = nullptr;
         return;
     }
 
-    // Prepare headers
-    std::wstring headersCombined;
-    if (!headersArgs.empty()) {
-        auto headers = ParseHeaders(headersArgs);
-        for (const auto& hdr : headers) {
-            headersCombined += hdr + L"\r\n";
+    for (const auto& hdr : ParseHeaders(headersArgs)) {
+        if (!WinHttpAddRequestHeaders(g_hRequest, hdr.c_str(),
+            static_cast<DWORD>(hdr.length()),
+            WINHTTP_ADDREQ_FLAG_ADD | WINHTTP_ADDREQ_FLAG_REPLACE)) {
+            PrintWinHttpError("WinHttpAddRequestHeaders");
         }
     }
 
-    // Send request
-    BOOL bSend = WinHttpSendRequest(hRequest,
-        headersCombined.empty() ? WINHTTP_NO_ADDITIONAL_HEADERS : headersCombined.c_str(),
-        headersCombined.empty() ? 0 : static_cast<DWORD>(headersCombined.length()),
+    BOOL bSend = WinHttpSendRequest(g_hRequest,
+        WINHTTP_NO_ADDITIONAL_HEADERS, 0,
         nullptr, 0, 0, 0);
     if (!bSend) {
         PrintWinHttpError("WinHttpSendRequest");
-        WinHttpCloseHandle(hRequest);
-        WinHttpCloseHandle(hConnect);
-        WinHttpCloseHandle(hSession);
+        WinHttpCloseHandle(g_hRequest);
+        WinHttpCloseHandle(g_hConnect);
+        WinHttpCloseHandle(g_hSession);
+        g_hRequest = nullptr;
+        g_hConnect = nullptr;
+        g_hSession = nullptr;
         return;
     }
 
-    if (!WinHttpReceiveResponse(hRequest, nullptr)) {
+    if (!WinHttpReceiveResponse(g_hRequest, nullptr)) {
         PrintWinHttpError("WinHttpReceiveResponse");
-        WinHttpCloseHandle(hRequest);
-        WinHttpCloseHandle(hConnect);
-        WinHttpCloseHandle(hSession);
+        WinHttpCloseHandle(g_hRequest);
+        WinHttpCloseHandle(g_hConnect);
+        WinHttpCloseHandle(g_hSession);
+        g_hRequest = nullptr;
+        g_hConnect = nullptr;
+        g_hSession = nullptr;
         return;
     }
 
-    // Check status code
     DWORD statusCode = 0;
     DWORD size = sizeof(statusCode);
-    if (!WinHttpQueryHeaders(hRequest,
+    if (!WinHttpQueryHeaders(g_hRequest,
         WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER,
         nullptr, &statusCode, &size, nullptr)) {
         PrintWinHttpError("WinHttpQueryHeaders");
     }
 
-    std::cout << "HTTP CONNECT status code: " << statusCode << std::endl;
+    std::cout << "HTTPS request status code: " << statusCode << std::endl;
     if (statusCode == 200) {
-        std::cout << "Tunnel successfully established to " << target << " through proxy " << proxy << std::endl;
+        std::cout << "Successfully connected to " << target << " through proxy " << proxy << std::endl;
     } else {
-        std::cout << "Failed to establish tunnel, status code: " << statusCode << std::endl;
+        std::cout << "Failed HTTPS request, status code: " << statusCode << std::endl;
     }
 
-    // Cleanup
-    WinHttpCloseHandle(hRequest);
-    WinHttpCloseHandle(hConnect);
-    WinHttpCloseHandle(hSession);
 }
 
 void CmdHttpPropFind(const std::string& args) {
-    // Parse args: split by spaces but keep quoted strings intact
     std::vector<std::string> tokens;
     std::regex re(R"((\"([^\"\\]|\\.)*\"|\S+))");
     auto begin = std::sregex_iterator(args.begin(), args.end(), re);
@@ -1576,7 +1606,6 @@ void CmdHttpPropFind(const std::string& args) {
         return;
     }
 
-    // Check if user supplied Content-Type header; if not, add default
     bool hasContentType = false;
     for (const auto& h : headers) {
         if (_wcsnicmp(h.c_str(), L"Content-Type:", 13) == 0) {
@@ -1588,7 +1617,6 @@ void CmdHttpPropFind(const std::string& args) {
         headers.push_back(L"Content-Type: application/xml");
     }
 
-    // Add headers one by one using WinHttpAddRequestHeaders
     for (const auto& h : headers) {
         if (!WinHttpAddRequestHeaders(hRequest.get(), h.c_str(), (DWORD)-1, WINHTTP_ADDREQ_FLAG_ADD)) {
             std::cout << "Error:\nFailed to add header: " << WideToUtf8(h) << "\n";
@@ -1596,7 +1624,6 @@ void CmdHttpPropFind(const std::string& args) {
         }
     }
 
-    // Typical minimal PROPFIND XML body
     const char* propfindXml =
         "<?xml version=\"1.0\" encoding=\"utf-8\"?>"
         "<propfind xmlns=\"DAV:\">"
@@ -1634,7 +1661,6 @@ void CmdHttpPropFind(const std::string& args) {
             }
         }
 
-        // Read and print response body (optional)
         std::vector<char> buffer(4096);
         DWORD bytesRead = 0;
         std::cout << "Response body:\n";
@@ -1646,6 +1672,374 @@ void CmdHttpPropFind(const std::string& args) {
         DWORD error = GetLastError();
         std::cout << "Error:\nHTTP PROPFIND failed (code " << error << ")\n";
     }
+}
+
+bool URLParser(const std::string& url, std::wstring& outHost, std::wstring& outPath, INTERNET_PORT& outPort, bool& useHttps) {
+    size_t pos = url.find("://");
+    if (pos == std::string::npos) return false;
+
+    std::string protocol = url.substr(0, pos);
+    std::string rest = url.substr(pos + 3);
+
+    useHttps = (protocol == "https");
+
+    size_t slashPos = rest.find('/');
+    std::string host;
+    std::string path;
+    if (slashPos == std::string::npos) {
+        host = rest;
+        path = "/";
+    } else {
+        host = rest.substr(0, slashPos);
+        path = rest.substr(slashPos);
+    }
+
+    size_t colonPos = host.find(':');
+    if (colonPos != std::string::npos) {
+        outPort = static_cast<INTERNET_PORT>(std::stoi(host.substr(colonPos + 1)));
+        host = host.substr(0, colonPos);
+    } else {
+        outPort = useHttps ? INTERNET_DEFAULT_HTTPS_PORT : INTERNET_DEFAULT_HTTP_PORT;
+    }
+
+    int size_needed = MultiByteToWideChar(CP_UTF8, 0, host.c_str(), (int)host.length(), nullptr, 0);
+    outHost.resize(size_needed);
+    MultiByteToWideChar(CP_UTF8, 0, host.c_str(), (int)host.length(), &outHost[0], size_needed);
+
+    size_needed = MultiByteToWideChar(CP_UTF8, 0, path.c_str(), (int)path.length(), nullptr, 0);
+    outPath.resize(size_needed);
+    MultiByteToWideChar(CP_UTF8, 0, path.c_str(), (int)path.length(), &outPath[0], size_needed);
+
+    return true;
+}
+
+void PrintWindowsHttpError(const std::string& context) {
+    DWORD err = GetLastError();
+    std::cerr << context << " failed with error: " << err << std::endl;
+}
+
+void CmdHttpDownload(const std::string& args) {
+    std::istringstream iss(args);
+    std::string url, outputFile;
+
+    iss >> url >> outputFile;
+    if (url.empty() || outputFile.empty()) {
+        std::cout << "Usage: download <url> <output_file>\n";
+        return;
+    }
+
+    std::wstring wHost, wPath;
+    INTERNET_PORT port = 0;
+    bool useHttps = false;
+
+    if (!URLParser(url, wHost, wPath, port, useHttps)) {
+        std::cout << "Invalid URL\n";
+        return;
+    }
+
+    HINTERNET hSession = WinHttpOpen(L"Zephyr/1.0",
+                                    WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
+                                    WINHTTP_NO_PROXY_NAME,
+                                    WINHTTP_NO_PROXY_BYPASS,
+                                    0);
+    if (!hSession) {
+        PrintWindowsHttpError("WinHttpOpen");
+        return;
+    }
+
+    DWORD dwSecureProtocols = WINHTTP_FLAG_SECURE_PROTOCOL_TLS1_2 | WINHTTP_FLAG_SECURE_PROTOCOL_TLS1_3;
+    if (!WinHttpSetOption(
+            hSession,
+            WINHTTP_OPTION_SECURE_PROTOCOLS,
+            &dwSecureProtocols,
+            sizeof(dwSecureProtocols))) 
+    {
+        PrintWindowsHttpError("WinHttpSetOption (TLS protocols)");
+        WinHttpCloseHandle(hSession);
+        return;
+    }
+
+    HINTERNET hConnect = WinHttpConnect(hSession, wHost.c_str(), port, 0);
+    if (!hConnect) {
+        PrintWindowsHttpError("WinHttpConnect");
+        WinHttpCloseHandle(hSession);
+        return;
+    }
+
+    DWORD dwFlags = useHttps ? WINHTTP_FLAG_SECURE : 0;
+
+    HINTERNET hRequest = WinHttpOpenRequest(hConnect, L"GET", wPath.c_str(),
+                                           nullptr, WINHTTP_NO_REFERER,
+                                           WINHTTP_DEFAULT_ACCEPT_TYPES,
+                                           dwFlags);
+    if (!hRequest) {
+        PrintWindowsHttpError("WinHttpOpenRequest");
+        WinHttpCloseHandle(hConnect);
+        WinHttpCloseHandle(hSession);
+        return;
+    }
+
+    if (!WinHttpSendRequest(hRequest, WINHTTP_NO_ADDITIONAL_HEADERS, 0,
+                            nullptr, 0, 0, 0)) {
+        PrintWindowsHttpError("WinHttpSendRequest");
+        WinHttpCloseHandle(hRequest);
+        WinHttpCloseHandle(hConnect);
+        WinHttpCloseHandle(hSession);
+        return;
+    }
+
+    if (!WinHttpReceiveResponse(hRequest, nullptr)) {
+        PrintWindowsHttpError("WinHttpReceiveResponse");
+        WinHttpCloseHandle(hRequest);
+        WinHttpCloseHandle(hConnect);
+        WinHttpCloseHandle(hSession);
+        return;
+    }
+
+    DWORD statusCode = 0;
+    DWORD size = sizeof(statusCode);
+    if (!WinHttpQueryHeaders(hRequest,
+                             WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER,
+                             nullptr, &statusCode, &size, nullptr)) {
+        PrintWindowsHttpError("WinHttpQueryHeaders");
+    }
+
+    if (statusCode != 200) {
+        std::cout << "HTTP request failed, status code: " << statusCode << std::endl;
+        WinHttpCloseHandle(hRequest);
+        WinHttpCloseHandle(hConnect);
+        WinHttpCloseHandle(hSession);
+        return;
+    }
+
+    std::ofstream outfile(outputFile, std::ios::binary);
+    if (!outfile) {
+        std::cout << "Failed to open output file: " << outputFile << std::endl;
+        WinHttpCloseHandle(hRequest);
+        WinHttpCloseHandle(hConnect);
+        WinHttpCloseHandle(hSession);
+        return;
+    }
+
+    const int bufSize = 8192;
+    char buffer[bufSize];
+    DWORD bytesAvailable = 0, bytesRead = 0;
+
+    while (true) {
+        if (!WinHttpQueryDataAvailable(hRequest, &bytesAvailable)) {
+            PrintWindowsHttpError("WinHttpQueryDataAvailable");
+            break;
+        }
+        if (bytesAvailable == 0)
+            break;
+
+        DWORD toRead = (bytesAvailable < bufSize) ? bytesAvailable : bufSize;
+
+        if (!WinHttpReadData(hRequest, buffer, toRead, &bytesRead)) {
+            PrintWindowsHttpError("WinHttpReadData");
+            break;
+        }
+        if (bytesRead == 0)
+            break;
+
+        outfile.write(buffer, bytesRead);
+        if (!outfile) {
+            std::cout << "Error writing to file\n";
+            break;
+        }
+    }
+
+    std::cout << "File downloaded successfully to " << outputFile << std::endl;
+
+    WinHttpCloseHandle(hRequest);
+    WinHttpCloseHandle(hConnect);
+    WinHttpCloseHandle(hSession);
+}
+
+void CmdHttpPurge(const std::string& args) {
+    std::vector<std::string> tokens;
+    {
+        std::istringstream iss(args);
+        std::string token;
+        while (std::getline(iss, token, '|')) {
+            size_t start = token.find_first_not_of(" \t");
+            size_t end = token.find_last_not_of(" \t");
+            if (start != std::string::npos && end != std::string::npos)
+                tokens.push_back(token.substr(start, end - start + 1));
+        }
+    }
+
+    if (tokens.empty()) {
+        std::cerr << "Usage: purge <URL> [header1|header2|...] [|payload]\n";
+        return;
+    }
+
+    std::string url = tokens[0];
+    std::vector<std::string> headers;
+    std::string payload;
+
+    if (tokens.size() > 1) {
+        if (tokens.size() > 2) {
+            for (size_t i = 1; i < tokens.size() - 1; ++i)
+                headers.push_back(tokens[i]);
+            payload = tokens.back();
+        } else {
+            if (tokens[1].find(':') != std::string::npos)
+                headers.push_back(tokens[1]);
+            else
+                payload = tokens[1];
+        }
+    }
+
+    std::wstring wurl = ToWideString(url);
+
+    URL_COMPONENTS urlComp = {};
+    urlComp.dwStructSize = sizeof(urlComp);
+
+    wchar_t host[256] = {0};
+    wchar_t path[1024] = {0};
+
+    urlComp.lpszHostName = host;
+    urlComp.dwHostNameLength = _countof(host);
+    urlComp.lpszUrlPath = path;
+    urlComp.dwUrlPathLength = _countof(path);
+
+    if (!WinHttpCrackUrl(wurl.c_str(), (DWORD)wurl.length(), 0, &urlComp)) {
+        std::cerr << "Failed to parse URL. Error: " << GetLastError() << "\n";
+        return;
+    }
+
+    if (urlComp.nScheme != INTERNET_SCHEME_HTTP && urlComp.nScheme != INTERNET_SCHEME_HTTPS) {
+        std::cerr << "Unsupported URL scheme. Only HTTP and HTTPS are supported.\n";
+        return;
+    }
+
+    HINTERNET hSession = WinHttpOpen(L"Zephyr/1.0",
+                                     WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
+                                     WINHTTP_NO_PROXY_NAME,
+                                     WINHTTP_NO_PROXY_BYPASS,
+                                     0);
+    if (!hSession) {
+        std::cerr << "Failed to open WinHTTP session. Error: " << GetLastError() << "\n";
+        return;
+    }
+
+    HINTERNET hConnect = WinHttpConnect(hSession,
+                                        host,
+                                        urlComp.nPort,
+                                        0);
+    if (!hConnect) {
+        std::cerr << "Failed to connect to host. Error: " << GetLastError() << "\n";
+        WinHttpCloseHandle(hSession);
+        return;
+    }
+
+    DWORD dwFlags = (urlComp.nScheme == INTERNET_SCHEME_HTTPS) ? WINHTTP_FLAG_SECURE : 0;
+    HINTERNET hRequest = WinHttpOpenRequest(hConnect,
+                                            L"PURGE",
+                                            path,
+                                            nullptr,
+                                            WINHTTP_NO_REFERER,
+                                            WINHTTP_DEFAULT_ACCEPT_TYPES,
+                                            dwFlags);
+    if (!hRequest) {
+        std::cerr << "Failed to open HTTP request. Error: " << GetLastError() << "\n";
+        WinHttpCloseHandle(hConnect);
+        WinHttpCloseHandle(hSession);
+        return;
+    }
+
+    DWORD redirectPolicy = WINHTTP_OPTION_REDIRECT_POLICY_ALWAYS;
+    WinHttpSetOption(hRequest, WINHTTP_OPTION_REDIRECT_POLICY, &redirectPolicy, sizeof(redirectPolicy));
+
+    std::wstring headers_w;
+    for (size_t i = 0; i < headers.size(); ++i) {
+        headers_w += ToWideString(headers[i]);
+        headers_w += L"\r\n";
+    }
+
+    std::vector<char> payloadBuffer;
+    const char* payloadData = nullptr;
+    DWORD payloadSize = 0;
+    if (!payload.empty()) {
+        payloadBuffer.assign(payload.begin(), payload.end());
+        payloadData = payloadBuffer.data();
+        payloadSize = (DWORD)payloadBuffer.size();
+
+        headers_w += L"Content-Length: " + std::to_wstring(payloadSize) + L"\r\n";
+    }
+
+    if (!headers_w.empty()) {
+        headers_w += L"\r\n";
+    }
+
+    const wchar_t* additionalHeaders = headers_w.empty() ? WINHTTP_NO_ADDITIONAL_HEADERS : headers_w.c_str();
+    DWORD headersLength = (DWORD)headers_w.length();
+
+    if (!WinHttpSendRequest(hRequest,
+                            additionalHeaders,
+                            headersLength,
+                            (void*)payloadData,
+                            payloadSize,
+                            payloadSize,
+                            0)) {
+        std::cerr << "Failed to send request. Error: " << GetLastError() << "\n";
+        WinHttpCloseHandle(hRequest);
+        WinHttpCloseHandle(hConnect);
+        WinHttpCloseHandle(hSession);
+        return;
+    }
+
+    if (!WinHttpReceiveResponse(hRequest, nullptr)) {
+        std::cerr << "Failed to receive response. Error: " << GetLastError() << "\n";
+        WinHttpCloseHandle(hRequest);
+        WinHttpCloseHandle(hConnect);
+        WinHttpCloseHandle(hSession);
+        return;
+    }
+
+    DWORD statusCode = 0;
+    DWORD size = sizeof(statusCode);
+    if (WinHttpQueryHeaders(hRequest,
+                            WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER,
+                            nullptr, &statusCode, &size, nullptr)) {
+        const char* color = nullptr;
+        if (statusCode == 200) {
+            color = ANSI_BOLD_GREEN;
+        } else if ((statusCode >= 200 && statusCode < 300) || (statusCode >= 300 && statusCode < 400)) {
+            color = ANSI_BOLD_YELLOW;
+        } else {
+            color = ANSI_BOLD_RED;
+        }
+        std::cout << color << "HTTP Status Code: " << statusCode << ANSI_RESET << "\n\n";
+    } else {
+        std::cerr << "Failed to query status code. Error: " << GetLastError() << "\n";
+    }
+
+    DWORD dwSize = 0;
+    do {
+        if (!WinHttpQueryDataAvailable(hRequest, &dwSize)) {
+            std::cerr << "Error querying data availability: " << GetLastError() << "\n";
+            break;
+        }
+        if (dwSize == 0)
+            break;
+
+        std::vector<char> buffer(dwSize + 1);
+        DWORD dwDownloaded = 0;
+        if (!WinHttpReadData(hRequest, buffer.data(), dwSize, &dwDownloaded)) {
+            std::cerr << "Error reading data: " << GetLastError() << "\n";
+            break;
+        }
+        buffer[dwDownloaded] = '\0';
+        std::cout << buffer.data();
+    } while (dwSize > 0);
+
+    std::cout << std::endl;
+
+    WinHttpCloseHandle(hRequest);
+    WinHttpCloseHandle(hConnect);
+    WinHttpCloseHandle(hSession);
 }
 
 void CmdHttpHelp(const std::string& args) {
@@ -1661,9 +2055,11 @@ void CmdHttpHelp(const std::string& args) {
     std::cout << " - http link [-H \"Header: value\"] <url>   : Send an HTTP LINK request.\n";
     std::cout << " - http unlink [-H \"Header: value\"] <url> : Send an HTTP UNLINK request.\n";
     std::cout << " - http trace [-H \"Header: value\"] <url>  : Send an HTTP TRACE request.\n";
+    std::cout << " - http download <url> <output filename>   : Download a file from the given URL.\n";
     std::cout << " - http propfind [-H \"Header: value\"] <url>: Send an HTTP PROPFIND request.\n";
     std::cout << " - http connect <proxyHost:port> <targetHost:port> [-H \"Header: value\"]  : Establish an HTTP CONNECT tunnel through the proxy.\n";
     std::cout << " - http patch [-H \"Header\"] [-d \"body\"] <url> : Send an HTTP PATCH request.\n";
+    std::cout << " - http purge <URL> [header1|header2|...] [|payload] : Send an HTTP PURGE request.\n";
     std::cout << " - http help                               : Show this help message.\n";
     std::cout << ANSI_BOLD_YELLOW "---------------------------------\n" << ANSI_RESET;
 }

@@ -1,4 +1,5 @@
 #pragma once
+
 #include <string>
 
 void CmdHttpGet(const std::string& args);
@@ -13,4 +14,6 @@ void CmdHttpUnlink(const std::string& args);
 void CmdHttpTrace(const std::string& args);
 void CmdHttpConnect(const std::string& args);
 void CmdHttpPropFind(const std::string& args);
+void CmdHttpDownload(const std::string& args);
+void CmdHttpPurge(const std::string& args);
 void CmdHttpHelp(const std::string& args);

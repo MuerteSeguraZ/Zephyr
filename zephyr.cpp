@@ -375,6 +375,10 @@ void CmdHttp(const std::string& args) {
         CmdHttpConnect(remainingArgs);
     } else if (subcmd == "propfind") {
         CmdHttpPropFind(remainingArgs);
+    } else if (subcmd == "download") {
+        CmdHttpDownload(remainingArgs);
+    } else if (subcmd == "purge") {
+        CmdHttpPurge(remainingArgs);
     } else if (subcmd == "help" || subcmd == "?") {
         CmdHttpHelp(remainingArgs);
     } else {

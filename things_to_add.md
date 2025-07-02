@@ -30,7 +30,7 @@ PINGTEST                  DONE
 
 WC                       PROGRESS
 
-
+PURGE                   MAKE SO THAT THE STATUS (200 = ANSI_BOLD_GREEN. OTHER RED, MIDDLE YELLOW-ORANGISH)
 
          LINKUP
 
