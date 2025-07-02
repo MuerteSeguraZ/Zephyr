@@ -21,7 +21,7 @@ Send and analyze various HTTP requests directly from your shell:
 - `http propfind [-H "Header"] <url>` — Send a PROPFIND request
 - `http connect <proxyHost:port> <targetHost:port> [-H "Header"]` — Proxy tunnel
 - `http download <url> <output filename>` — Download a file
-- `http pu
+- `http purge <URL> [header1|header2|...] [|payload]` - Send an PURGE request
 - `http help` — HTTP usage reference
 
 ---
