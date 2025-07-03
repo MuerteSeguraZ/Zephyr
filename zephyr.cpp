@@ -3768,16 +3768,26 @@ void CmdLinkup(const std::string&) {
                 inet_ntop(AF_INET, &(dhcpv4->sin_addr), dhcpServerStr, sizeof(dhcpServerStr));
                 std::cout << ANSI_BOLD_GREEN << "  DHCPv4 Server:  " << ANSI_RESET << dhcpServerStr << "\n";
             }
-            // I will add IPv6 DHCPv6 server support later
         }
 
-        // Is that bih enabled tho
+        // Enabled?
         bool dhcpv6_enabled = false;
 #ifdef IP_ADAPTER_DHCPV6_ENABLED
         dhcpv6_enabled = (adapter->Flags & IP_ADAPTER_DHCPV6_ENABLED) != 0;
 #endif
         std::cout << ANSI_BOLD_GREEN << "  DHCPv6:         " << ANSI_RESET
                   << (dhcpv6_enabled ? "Enabled" : "Disabled") << "\n";
+
+        // New DHCPv6!!
+        if (adapter->Dhcpv6Server.lpSockaddr) {
+            char dhcpv6ServerStr[INET6_ADDRSTRLEN] = {};
+            if (adapter->Dhcpv6Server.lpSockaddr->sa_family == AF_INET6) {
+                sockaddr_in6* dhcpv6 = reinterpret_cast<sockaddr_in6*>(adapter->Dhcpv6Server.lpSockaddr);
+                if (inet_ntop(AF_INET6, &(dhcpv6->sin6_addr), dhcpv6ServerStr, sizeof(dhcpv6ServerStr))) {
+                    std::cout << ANSI_BOLD_GREEN << "  DHCPv6 Server:  " << ANSI_RESET << dhcpv6ServerStr << "\n";
+                }
+            }
+        }
 
         if (adapter->FirstGatewayAddress) {
             for (IP_ADAPTER_GATEWAY_ADDRESS* gw = adapter->FirstGatewayAddress; gw != nullptr; gw = gw->Next) {

@@ -36,6 +36,7 @@ PURGE                   MAKE SO THAT THE STATUS (200 = ANSI_BOLD_GREEN. OTHER RE
 
 5. FIX LINKUP (IP'S)      FIXED
 6. Add Subnetmasks        ADDED
+7. DHCP6 (finally)
 
 
 ## my head is full of parasites

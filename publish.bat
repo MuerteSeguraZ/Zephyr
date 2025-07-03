@@ -3,7 +3,7 @@
 git add --all
 
 set MSG=%1
-if "%MSG%"=="" set MSG=New Icon, README, New features in HTTP Client, better parsing.
+if "%MSG%"=="" set MSG=Added DHCPv6 to linkup.
 
 git commit -m "%MSG%"
 
