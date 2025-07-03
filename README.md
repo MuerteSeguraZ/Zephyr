@@ -8,6 +8,8 @@
 
 ![Made With C++](https://img.shields.io/badge/made%20with-C%2B%2B-blue)
 
+![License](https://img.shields.io/badge/license-MIT-green)
+
 ---
 
 ## ✨ Key Features
