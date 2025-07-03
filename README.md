@@ -10,6 +10,9 @@
 
 ![License](https://img.shields.io/badge/license-MIT-green)
 
+![Downloads](https://img.shields.io/github/downloads/MuerteSeguraZ/Zephyr/total?color=purple)
+
+
 ---
 
 ## ✨ Key Features
