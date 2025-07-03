@@ -116,5 +116,7 @@ Network diagnostics and monitoring built-in:
 `You can also do:`
 
 `git clone https://github.com/MuerteSeguraZ/Zephyr.git`
+
 `cd Zephyr`
+
 `buildandrun.bat`
