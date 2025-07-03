@@ -2,6 +2,12 @@
 
 **Zephyr** is a powerful and feature-rich command-line shell for Windows systems designed with versatility, security, and extensibility in mind. With advanced HTTP capabilities, deep system inspection tools, robust file and user management, and networking diagnostics — Zephyr is your all-in-one terminal toolbox.
 
+![Build](https://img.shields.io/badge/build-passing-brightgreen)
+
+![Platform](https://img.shields.io/badge/platform-Windows-blue)
+
+![Made With C++](https://img.shields.io/badge/made%20with-C%2B%2B-blue)
+
 ---
 
 ## ✨ Key Features
@@ -106,3 +112,9 @@ Network diagnostics and monitoring built-in:
 ### The MinGW C++ Compiler.
 
 `After you install that, just run "buildandrun" from the directory Zephyr is in. Make sure to have all the files installed, or just the EXE, it doesn't really matter.`
+
+`You can also do:`
+
+`git clone https://github.com/MuerteSeguraZ/Zephyr.git`
+`cd Zephyr`
+`buildandrun.bat`
