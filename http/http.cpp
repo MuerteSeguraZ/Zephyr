@@ -79,6 +79,17 @@ std::wstring ToWideString(const std::string& s) {
     return wstrTo;
 }
 
+std::string WStringToString(const std::wstring& wstr) {
+    if (wstr.empty()) return {};
+
+    int size_needed = WideCharToMultiByte(CP_UTF8, 0, wstr.c_str(), (int)wstr.length(),
+                                          nullptr, 0, nullptr, nullptr);
+    std::string str(size_needed, 0);
+    WideCharToMultiByte(CP_UTF8, 0, wstr.c_str(), (int)wstr.length(),
+                        &str[0], size_needed, nullptr, nullptr);
+    return str;
+}
+
 std::vector<uint8_t> ToUtf8Bytes(const std::string& str) {
     return std::vector<uint8_t>(str.begin(), str.end());
 }
@@ -319,9 +330,26 @@ static bool ParseArgs(const std::string& args, std::string& outUrl, std::vector<
 void CmdHttpGet(const std::string& args) {
     std::string url;
     std::vector<std::string> headers;
+    std::string cookieJarFile;
 
-    if (!ParseArgs(args, url, headers)) {
-        std::cerr << "Usage: get <URL> [header1|header2|...]\n";
+    // Basic arg parsing with --cookie-jar
+    std::istringstream iss(args);
+    std::string token;
+    while (iss >> token) {
+        if (token == "--cookie-jar") {
+            if (!(iss >> cookieJarFile)) {
+                std::cerr << "Missing filename after --cookie-jar\n";
+                return;
+            }
+        } else if (url.empty()) {
+            url = token;
+        } else {
+            headers.push_back(token);
+        }
+    }
+
+    if (url.empty()) {
+        std::cerr << "Usage: get <URL> [header1|header2|...] [--cookie-jar file]\n";
         return;
     }
 
@@ -373,10 +401,17 @@ void CmdHttpGet(const std::string& args) {
     }
 
     DWORD redirectPolicy = WINHTTP_OPTION_REDIRECT_POLICY_ALWAYS;
-    if (!WinHttpSetOption(hRequest.get(), WINHTTP_OPTION_REDIRECT_POLICY, &redirectPolicy, sizeof(redirectPolicy))) {
-        std::cerr << "Failed to set redirect policy. Error: " << GetLastError() << "\n";
-        return;
-    } 
+    WinHttpSetOption(hRequest.get(), WINHTTP_OPTION_REDIRECT_POLICY, &redirectPolicy, sizeof(redirectPolicy));
+
+    // Load and apply cookie header from file if exists
+    if (!cookieJarFile.empty()) {
+        std::ifstream cookieFile(cookieJarFile);
+        if (cookieFile) {
+            std::string cookieLine((std::istreambuf_iterator<char>(cookieFile)), {});
+            std::wstring wcookie = StringToWString("Cookie: " + cookieLine);
+            WinHttpAddRequestHeaders(hRequest.get(), wcookie.c_str(), (DWORD)-1, WINHTTP_ADDREQ_FLAG_ADD);
+        }
+    }
 
     std::wstring headers_w;
     for (const auto& hdr : headers) {
@@ -384,9 +419,9 @@ void CmdHttpGet(const std::string& args) {
     }
 
     if (!WinHttpSendRequest(hRequest.get(),
-                           headers_w.empty() ? WINHTTP_NO_ADDITIONAL_HEADERS : headers_w.c_str(),
-                           (DWORD)headers_w.length(),
-                           nullptr, 0, 0, 0)) {
+                            headers_w.empty() ? WINHTTP_NO_ADDITIONAL_HEADERS : headers_w.c_str(),
+                            (DWORD)headers_w.length(),
+                            nullptr, 0, 0, 0)) {
         std::cerr << "Failed to send request. Error: " << GetLastError() << "\n";
         return;
     }
@@ -398,11 +433,23 @@ void CmdHttpGet(const std::string& args) {
 
     DWORD statusCode = 0;
     DWORD size = sizeof(statusCode);
-    if (!WinHttpQueryHeaders(hRequest.get(), WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER,
-                             nullptr, &statusCode, &size, nullptr)) {
-        std::cerr << "Failed to query status code. Error: " << GetLastError() << "\n";
-    } else {
+    if (WinHttpQueryHeaders(hRequest.get(), WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER,
+                            nullptr, &statusCode, &size, nullptr)) {
         std::cout << "HTTP Status Code: " << statusCode << "\n\n";
+    }
+
+    if (!cookieJarFile.empty()) {
+        DWORD dwSize = 0;
+        WinHttpQueryHeaders(hRequest.get(), WINHTTP_QUERY_SET_COOKIE, WINHTTP_HEADER_NAME_BY_INDEX, nullptr, &dwSize, WINHTTP_NO_HEADER_INDEX);
+        if (GetLastError() == ERROR_INSUFFICIENT_BUFFER) {
+            std::vector<wchar_t> buffer(dwSize / sizeof(wchar_t));
+            if (WinHttpQueryHeaders(hRequest.get(), WINHTTP_QUERY_SET_COOKIE, WINHTTP_HEADER_NAME_BY_INDEX, buffer.data(), &dwSize, WINHTTP_NO_HEADER_INDEX)) {
+                std::wstring cookies(buffer.data());
+                std::string cookieStr = WStringToString(cookies);
+                std::ofstream out(cookieJarFile, std::ios::trunc);
+                out << cookieStr << "\n";
+            }
+        }
     }
 
     DWORD dwSize = 0;
@@ -425,6 +472,7 @@ void CmdHttpGet(const std::string& args) {
 
     std::cout << std::endl;
 }
+
 
 std::wstring ToWString(const std::string& str) {
     if (str.empty()) return std::wstring();
@@ -2046,7 +2094,7 @@ void CmdHttpHelp(const std::string& args) {
     (void)args;
     std::cout << ANSI_BOLD_CYAN "======== HTTP Commands Help ========\n" << ANSI_RESET;
     std::cout << "Available commands:\n";
-    std::cout << " - http put <url> <headers|body>            : Send an HTTP PUT request.\n";
+    std::cout << " - http put <url> <headers|body> [cookies]  : Send an HTTP PUT request.\n";
     std::cout << " - http get <url>                           : Send an HTTP GET request.\n";
     std::cout << " - http head [-H \"Header\"] <url>          : Send an HTTP HEAD request.\n";
     std::cout << " - http post <url> <headers|body>           : Send an HTTP POST request.\n";
@@ -2055,9 +2103,9 @@ void CmdHttpHelp(const std::string& args) {
     std::cout << " - http link [-H \"Header: value\"] <url>   : Send an HTTP LINK request.\n";
     std::cout << " - http unlink [-H \"Header: value\"] <url> : Send an HTTP UNLINK request.\n";
     std::cout << " - http trace [-H \"Header: value\"] <url>  : Send an HTTP TRACE request.\n";
-    std::cout << " - http download <url> <output filename>   : Download a file from the given URL.\n";
+    std::cout << " - http download <url> <output filename>    : Download a file from the given URL.\n";
     std::cout << " - http propfind [-H \"Header: value\"] <url>: Send an HTTP PROPFIND request.\n";
-    std::cout << " - http connect <proxyHost:port> <targetHost:port> [-H \"Header: value\"]  : Establish an HTTP CONNECT tunnel through the proxy.\n";
+    std::cout << " - http connect <proxyHost:port> <targetHost:port> [-H \"Header: value\"] : Establish an HTTP CONNECT tunnel through the proxy.\n";
     std::cout << " - http patch [-H \"Header\"] [-d \"body\"] <url> : Send an HTTP PATCH request.\n";
     std::cout << " - http purge <URL> [header1|header2|...] [|payload] : Send an HTTP PURGE request.\n";
     std::cout << " - http help                               : Show this help message.\n";

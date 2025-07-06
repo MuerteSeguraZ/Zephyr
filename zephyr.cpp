@@ -5,6 +5,10 @@
 
 #define _WIN32_WINNT 0x0601
 
+#ifndef FILE_SUPPORTS_COMPRESSION
+#define FILE_SUPPORTS_COMPRESSION 0x00000010
+#endif
+
 // Windows headers (order matters)
 #include <winsock2.h>        
 #include <ws2tcpip.h>        
@@ -67,6 +71,7 @@
 #include "bigcommands/inspect.h"
 #include "list/list.h"
 #include "http/http.h"
+#include "ANSI/ANSI_COLORS_H.h"
 
 #pragma comment(lib, "iphlpapi.lib")
 #pragma comment(lib, "ws2_32.lib")
@@ -79,71 +84,6 @@
 #pragma comment(lib, "advapi32.lib")
 #pragma comment(lib, "Ole32.lib")
 #pragma comment(lib, "OleAut32.lib")
-
-
-// Colors
-#define ANSI_BLACK         "\x1b[30m"
-#define ANSI_RED           "\x1b[31m"
-#define ANSI_GREEN         "\x1b[32m"
-#define ANSI_YELLOW        "\x1b[33m"
-#define ANSI_BLUE          "\x1b[34m"
-#define ANSI_MAGENTA       "\x1b[35m"
-#define ANSI_CYAN          "\x1b[36m"
-#define ANSI_WHITE         "\x1b[37m"
-
-#define ANSI_BOLD_BLACK    "\x1b[1;30m"
-#define ANSI_BOLD_RED      "\x1b[1;31m"
-#define ANSI_BOLD_GREEN    "\x1b[1;32m"
-#define ANSI_BOLD_YELLOW   "\x1b[1;33m"
-#define ANSI_BOLD_BLUE     "\x1b[1;34m"
-#define ANSI_BOLD_MAGENTA  "\x1b[1;35m"
-#define ANSI_BOLD_CYAN     "\x1b[1;36m"
-#define ANSI_BOLD_WHITE    "\x1b[1;37m"
-
-#define ANSI_UNDERLINE_BLACK   "\x1b[4;30m"
-#define ANSI_UNDERLINE_RED     "\x1b[4;31m"
-#define ANSI_UNDERLINE_GREEN   "\x1b[4;32m"
-#define ANSI_UNDERLINE_YELLOW  "\x1b[4;33m"
-#define ANSI_UNDERLINE_BLUE    "\x1b[4;34m"
-#define ANSI_UNDERLINE_MAGENTA "\x1b[4;35m"
-#define ANSI_UNDERLINE_CYAN    "\x1b[4;36m"
-#define ANSI_UNDERLINE_WHITE   "\x1b[4;37m"
-
-#define ANSI_BG_BLACK     "\x1b[40m"
-#define ANSI_BG_RED       "\x1b[41m"
-#define ANSI_BG_GREEN     "\x1b[42m"
-#define ANSI_BG_YELLOW    "\x1b[43m"
-#define ANSI_BG_BLUE      "\x1b[44m"
-#define ANSI_BG_MAGENTA   "\x1b[45m"
-#define ANSI_BG_CYAN      "\x1b[46m"
-#define ANSI_BG_WHITE     "\x1b[47m"
-
-#define ANSI_INTENSE_BLACK     "\x1b[90m"
-#define ANSI_INTENSE_RED       "\x1b[91m"
-#define ANSI_INTENSE_GREEN     "\x1b[92m"
-#define ANSI_INTENSE_YELLOW    "\x1b[93m"
-#define ANSI_INTENSE_BLUE      "\x1b[94m"
-#define ANSI_INTENSE_MAGENTA   "\x1b[95m"
-#define ANSI_INTENSE_CYAN      "\x1b[96m"
-#define ANSI_INTENSE_WHITE     "\x1b[97m"
-
-#define ANSI_BG_INTENSE_BLACK     "\x1b[100m"
-#define ANSI_BG_INTENSE_RED       "\x1b[101m"
-#define ANSI_BG_INTENSE_GREEN     "\x1b[102m"
-#define ANSI_BG_INTENSE_YELLOW    "\x1b[103m"
-#define ANSI_BG_INTENSE_BLUE      "\x1b[104m"
-#define ANSI_BG_INTENSE_MAGENTA   "\x1b[105m"
-#define ANSI_BG_INTENSE_CYAN      "\x1b[106m"
-#define ANSI_BG_INTENSE_WHITE     "\x1b[107m"
-
-#define ANSI_RESET         "\x1b[0m"
-#define ANSI_BOLD          "\x1b[1m"
-#define ANSI_DIM           "\x1b[2m"
-#define ANSI_UNDERLINE     "\x1b[4m"
-#define ANSI_REVERSE       "\x1b[7m"
-#define ANSI_HIDDEN        "\x1b[8m"
-#define ANSI_STRIKETHROUGH "\x1b[9m"
-
 
 namespace fs = std::filesystem;
 
@@ -263,9 +203,9 @@ void CmdStopJob(const std::string& args);
 void CmdStartJob(const std::string& args);
 void CmdClipCopy(const std::string& args);
 void CmdFSize(const std::string& arg);
+void CmdDrywall(const std::string& args);
 bool RunBatchIfExists(const std::string& cmd, const std::string& args);
 void DeleteContents(const fs::path& dir);
-
 void CmdInspect(const std::string& args) {
     std::istringstream iss(args);
     std::string subcmd;
@@ -313,6 +253,8 @@ if (subcmd == "listusers") {
     CmdListGroups(remainingArgs);
 } else if (subcmd == "listloggedin") {
     CmdListLoggedIn(remainingArgs);
+} else if (subcmd == "listlastlogons") {
+    CmdListLastLogons(remainingArgs);
 } else if (subcmd == "listadmins") {
     CmdListAdmins(remainingArgs);
 } else if (subcmd == "listprofiles") {
@@ -333,12 +275,18 @@ if (subcmd == "listusers") {
     CmdListGroupMembers(remainingArgs);
 } else if (subcmd == "listremotesessions") {
     CmdListRemoteSessions(remainingArgs);
+} else if (subcmd == "listdisabledusers") {
+    CmdListDisabledUsers(remainingArgs);
+} else if (subcmd == "listdrives") {
+    CmdListDrives(remainingArgs);
+} else if (subcmd == "listvolumes") {
+    CmdListVolumes(remainingArgs);
 } else if (subcmd == "help" || subcmd == "?") {
     CmdListHelp(remainingArgs);  
 } else if (subcmd == "usermgmthelp" || subcmd.empty()) {
     CmdListHelp("");  
 } else {
-    std::cerr << "Usage: usermgmt <listusers|listgroups|listloggedin|listadmins|listprofiles|listdomains|listprocessusers|listprivileges|listuserdetails|listlocalusers|listnetworkusers|listlocalgroups|listgroupmembers|listremotesessions|help>\n";
+    CmdListHelp("");
     }
  }
 
@@ -378,7 +326,7 @@ void CmdHttp(const std::string& args) {
     } else if (subcmd == "download") {
         CmdHttpDownload(remainingArgs);
     } else if (subcmd == "purge") {
-        CmdHttpPurge(remainingArgs);
+        CmdHttpPurge(remainingArgs);  
     } else if (subcmd == "help" || subcmd == "?") {
         CmdHttpHelp(remainingArgs);
     } else {
@@ -394,7 +342,7 @@ std::unordered_map<std::string, std::function<void(const std::string&)>> command
     {"sysinfo", CmdSysinfo}, {"battery", CmdBattery}, {"touch", CmdTouch}, {"find", CmdFind},
     {"date", CmdDate}, {"env", CmdEnv}, {"refreshenv", CmdRefreshEnv},
     {"help", CmdHelp}, {"?", CmdHelp},
-    {"rename", CmdRename}, {"radar", CmdRadar}, {"endproc", CmdEndproc}, 
+    {"rename", CmdRename}, {"radar", CmdRadar}, {"endproc", CmdEndproc}, {"drywallmaster", CmdDrywall}, 
     {"linkup", CmdLinkup}, {"ntwkadp", CmdNetworkAdapters}, {"diskinfo", CmdDiskInfo}, {"du", CmdDU},
     {"ctitle", CmdSetTitle}, {"sconfig", CmdSconfig}, {"startupapps", CmdStartupApps}, 
     {"mconfig", CmdMConfig}, {"version", CmdVersion}, {"cutemessage", CmdCuteMessage},
@@ -410,7 +358,6 @@ std::unordered_map<std::string, std::function<void(const std::string&)>> command
     {"jobs", CmdJobs}, {"bgjob", CmdBgJob}, {"fgjob", CmdFgJob}, {"stopjob", CmdStopJob}, {"startjob", CmdStartJob}, {"clipcopy", CmdClipCopy},
     {"inspect", CmdInspect}, {"usermgmt", CmdUserMgmt}, {"http", CmdHttp}
 };
-
 
 void EnableVirtualTerminalProcessing() {
     HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
@@ -461,7 +408,6 @@ bool RunPowershellIfExists(const std::string& command, const std::string& args) 
     }
 }
 
-// VBScript
 
 bool RunVbsIfExists(const std::string& command, const std::string& args) {
     namespace fs = std::filesystem;
@@ -480,8 +426,6 @@ bool RunVbsIfExists(const std::string& command, const std::string& args) {
     }
 }
 
-// Shell (.sh) files
-
 bool RunShellIfExists(const std::string& command, const std::string& args) {
     namespace fs = std::filesystem;
 
@@ -499,8 +443,6 @@ bool RunShellIfExists(const std::string& command, const std::string& args) {
         }
 }
 
-// Python
-
 bool RunPythonIfExists(const std::string& command, const std::string& args) {
     namespace fs = std::filesystem;
 
@@ -517,8 +459,6 @@ bool RunPythonIfExists(const std::string& command, const std::string& args) {
         return false;
     }
 } 
-
-// JavaScript
 
 bool RunJavaScriptIfExists(const std::string& command, const std::string& args) {
     namespace fs = std::filesystem;
@@ -3602,6 +3542,15 @@ void CmdVersion(const std::string&) {
     
 }
 
+void CmdDrywall(const std::string& args) {
+    (void)args;
+    std::cout << ANSI_BOLD_RED "EASILY FLUSTERED!" << ANSI_RESET << std::endl;
+    std::cout << ANSI_BOLD_RED "IS A BOYKISSER (OMG CUTE?)!" << ANSI_RESET << std::endl;
+    std::cout << ANSI_BOLD_RED "IS A BOTTOM!" << ANSI_RESET << std::endl;
+    std::cout << ANSI_BOLD_RED "LOVES CUDDLES (plus points :3)" << ANSI_RESET << std::endl;
+    std::cout << ANSI_BOLD_RED "CLINGY AND AFFECTIONATE (MORE PLUS POINTS!!!!!)" << ANSI_RESET << std::endl;
+}
+
 void CmdCuteMessage(const std::string&) {
     printf("This for my gf, Joselyn.\n");
     printf("I'll love you everyday of my existence.\n");
@@ -3688,12 +3637,13 @@ void CmdLinkup(const std::string&) {
 
         std::string name = adapter->FriendlyName ? WStringToUTF8(adapter->FriendlyName) : "(unknown)";
         std::string desc = adapter->Description ? WStringToUTF8(adapter->Description) : "(unknown)";
+        std::string dnsSuffix = adapter->DnsSuffix ? WStringToUTF8(adapter->DnsSuffix) : "";
 
         std::string ifType;
         switch (adapter->IfType) {
             case IF_TYPE_ETHERNET_CSMACD: ifType = "Ethernet"; break;
             case IF_TYPE_IEEE80211:       ifType = "Wi-Fi"; break;
-            case MIB_IF_TYPE_LOOPBACK:    ifType = "Loopback"; break; // bugfix 1
+            case MIB_IF_TYPE_LOOPBACK:    ifType = "Loopback"; break; 
             case IF_TYPE_TUNNEL:          ifType = "Tunnel"; break;
             case IF_TYPE_PPP:             ifType = "PPP"; break;
             case IF_TYPE_SLIP:            ifType = "SLIP"; break;
@@ -3701,11 +3651,12 @@ void CmdLinkup(const std::string&) {
         }
 
         std::cout << ANSI_YELLOW << "============================================================" << ANSI_RESET << "\n";
-        std::cout << ANSI_BOLD_GREEN << "↪ Interface Name: " << ANSI_RESET << name << "\n";
-        std::cout << ANSI_BOLD_GREEN << "  Network Name:   " << ANSI_RESET << desc << "\n";
-        std::cout << ANSI_BOLD_GREEN << "  Interface Type: " << ANSI_RESET << ifType << "\n";
+        std::cout << ANSI_BOLD_GREEN << "↪ Interface Name:      " << ANSI_RESET << name << "\n";
+        std::cout << ANSI_BOLD_GREEN << "  Network Name:        " << ANSI_RESET << desc << "\n";
+        std::cout << ANSI_BOLD_GREEN << "  DNS Suffix:          " << ANSI_RESET << (dnsSuffix.empty() ? "(none)" : dnsSuffix) << "\n";
+        std::cout << ANSI_BOLD_GREEN << "  Interface Type:      " << ANSI_RESET << ifType << "\n";
 
-        std::cout << ANSI_BOLD_GREEN << "  MAC: " << ANSI_RESET;
+        std::cout << ANSI_BOLD_GREEN << "  MAC:                 " << ANSI_RESET;
         if (adapter->PhysicalAddressLength == 0) {
             std::cout << "(none)\n";
         } else {
@@ -3715,6 +3666,31 @@ void CmdLinkup(const std::string&) {
             }
             std::cout << "\n";
         }
+
+        // MTU
+        std::cout << ANSI_BOLD_GREEN << "  MTU:                 " << ANSI_RESET << adapter->Mtu << "\n";
+
+        // Speed (convert to Mbps, if speed is non-zero)
+        if (adapter->TransmitLinkSpeed != 0) {
+            // Speed is in bits per second, so divide by 1,000,000 to get Mbps
+            uint64_t speedMbps = adapter->TransmitLinkSpeed / 1000000;
+            std::cout << ANSI_BOLD_GREEN << "  Link Speed:          " << ANSI_RESET << speedMbps << " Mbps\n";
+        } else {
+            std::cout << ANSI_BOLD_GREEN << "  Link Speed:          " << ANSI_RESET << "(unknown)\n";
+        }
+
+        std::cout << ANSI_BOLD_GREEN << "  OperStatus:          " << ANSI_RESET
+                  << (adapter->OperStatus == IfOperStatusUp ? "Up" : "Down") << "\n";
+        std::cout << ANSI_BOLD_GREEN << "  Is Receive Only:     " << ANSI_RESET
+                  << (adapter->ReceiveOnly ? "Yes" : "No") << "\n";
+        std::cout << ANSI_BOLD_GREEN << "  Is Point To Point:   " << ANSI_RESET
+                  << (adapter->IfType == IF_TYPE_PPP ? "Yes" : "No") << "\n";
+        std::cout << ANSI_BOLD_GREEN << "  Supports Multicast:  " << ANSI_RESET
+                  << ((adapter->Flags & IP_ADAPTER_NO_MULTICAST) ? "No" : "Yes") << "\n";
+
+        // Loopback confirmation
+        std::cout << ANSI_BOLD_GREEN << "  Is Loopback:         " << ANSI_RESET
+                  << ((adapter->IfType == MIB_IF_TYPE_LOOPBACK) ? "Yes" : "No") << "\n";
 
         bool hasIP = false;
         for (IP_ADAPTER_UNICAST_ADDRESS* ua = adapter->FirstUnicastAddress; ua != nullptr; ua = ua->Next) {
@@ -3736,7 +3712,7 @@ void CmdLinkup(const std::string&) {
             if (addrPtr && inet_ntop(ua->Address.lpSockaddr->sa_family, addrPtr, ipStr, sizeof(ipStr))) {
                 hasIP = true;
                 if (isIPv4) {
-                    std::cout << ANSI_BOLD_GREEN << "  IP Address:     " << ANSI_RESET << ipStr << "\n";
+                    std::cout << ANSI_BOLD_GREEN << "  IP Address:         " << ANSI_RESET << ipStr << "\n";
 
                     uint8_t prefix = ua->OnLinkPrefixLength;
                     if (prefix <= 32) {
@@ -3745,20 +3721,20 @@ void CmdLinkup(const std::string&) {
                         maskAddr.s_addr = htonl(mask);
                         char maskStr[INET_ADDRSTRLEN] = {};
                         inet_ntop(AF_INET, &maskAddr, maskStr, sizeof(maskStr));
-                        std::cout << ANSI_BOLD_GREEN << "  Subnet Mask:    " << ANSI_RESET << maskStr << "\n";
+                        std::cout << ANSI_BOLD_GREEN << "  Subnet Mask:        " << ANSI_RESET << maskStr << "\n";
                     }
                 } else {
-                    std::cout << ANSI_BOLD_GREEN << "  IP Address:     " << ANSI_RESET << ipStr << "\n";
-                    std::cout << ANSI_BOLD_GREEN << "  Subnet Prefix:  " << ANSI_RESET << "/" << static_cast<int>(ua->OnLinkPrefixLength) << "\n";
+                    std::cout << ANSI_BOLD_GREEN << "  IP Address:         " << ANSI_RESET << ipStr << "\n";
+                    std::cout << ANSI_BOLD_GREEN << "  Subnet Prefix:      " << ANSI_RESET << "/" << static_cast<int>(ua->OnLinkPrefixLength) << "\n";
                 }
             }
         }
 
         if (!hasIP) {
-            std::cout << ANSI_BOLD_GREEN << "  IP Address:     " << ANSI_RESET << "(none assigned)\n";
+            std::cout << ANSI_BOLD_GREEN << "  IP Address:         " << ANSI_RESET << "(none assigned)\n";
         }
 
-        std::cout << ANSI_BOLD_GREEN << "  DHCPv4:         " << ANSI_RESET
+        std::cout << ANSI_BOLD_GREEN << "  DHCPv4:             " << ANSI_RESET
                   << ((adapter->Flags & IP_ADAPTER_DHCP_ENABLED) ? "Enabled" : "Disabled") << "\n";
 
         if (adapter->Dhcpv4Server.lpSockaddr) {
@@ -3766,25 +3742,23 @@ void CmdLinkup(const std::string&) {
             if (adapter->Dhcpv4Server.lpSockaddr->sa_family == AF_INET) {
                 sockaddr_in* dhcpv4 = reinterpret_cast<sockaddr_in*>(adapter->Dhcpv4Server.lpSockaddr);
                 inet_ntop(AF_INET, &(dhcpv4->sin_addr), dhcpServerStr, sizeof(dhcpServerStr));
-                std::cout << ANSI_BOLD_GREEN << "  DHCPv4 Server:  " << ANSI_RESET << dhcpServerStr << "\n";
+                std::cout << ANSI_BOLD_GREEN << "  DHCPv4 Server:      " << ANSI_RESET << dhcpServerStr << "\n";
             }
         }
 
-        // Enabled?
         bool dhcpv6_enabled = false;
 #ifdef IP_ADAPTER_DHCPV6_ENABLED
         dhcpv6_enabled = (adapter->Flags & IP_ADAPTER_DHCPV6_ENABLED) != 0;
 #endif
-        std::cout << ANSI_BOLD_GREEN << "  DHCPv6:         " << ANSI_RESET
+        std::cout << ANSI_BOLD_GREEN << "  DHCPv6:             " << ANSI_RESET
                   << (dhcpv6_enabled ? "Enabled" : "Disabled") << "\n";
 
-        // New DHCPv6!!
         if (adapter->Dhcpv6Server.lpSockaddr) {
             char dhcpv6ServerStr[INET6_ADDRSTRLEN] = {};
             if (adapter->Dhcpv6Server.lpSockaddr->sa_family == AF_INET6) {
                 sockaddr_in6* dhcpv6 = reinterpret_cast<sockaddr_in6*>(adapter->Dhcpv6Server.lpSockaddr);
                 if (inet_ntop(AF_INET6, &(dhcpv6->sin6_addr), dhcpv6ServerStr, sizeof(dhcpv6ServerStr))) {
-                    std::cout << ANSI_BOLD_GREEN << "  DHCPv6 Server:  " << ANSI_RESET << dhcpv6ServerStr << "\n";
+                    std::cout << ANSI_BOLD_GREEN << "  DHCPv6 Server:      " << ANSI_RESET << dhcpv6ServerStr << "\n";
                 }
             }
         }
@@ -3800,13 +3774,13 @@ void CmdLinkup(const std::string&) {
                         sockaddr_in6* gw6 = reinterpret_cast<sockaddr_in6*>(gw->Address.lpSockaddr);
                         inet_ntop(AF_INET6, &(gw6->sin6_addr), gwStr, sizeof(gwStr));
                     }
-                    std::cout << ANSI_BOLD_GREEN << "  Gateway:        " << ANSI_RESET << gwStr << "\n";
+                    std::cout << ANSI_BOLD_GREEN << "  Gateway:            " << ANSI_RESET << gwStr << "\n";
                 }
             }
         }
 
         if (adapter->FirstDnsServerAddress) {
-            std::cout << ANSI_BOLD_GREEN << "  DNS Servers:    " << ANSI_RESET;
+            std::cout << ANSI_BOLD_GREEN << "  DNS Servers:        " << ANSI_RESET;
             IP_ADAPTER_DNS_SERVER_ADDRESS* dns = adapter->FirstDnsServerAddress;
             bool firstDns = true;
             for (; dns != nullptr; dns = dns->Next) {
@@ -3843,7 +3817,6 @@ void CmdDiskInfo(const std::string& args) {
         }
     }
 
-
     char volumeName[MAX_PATH + 1] = { 0 };
     DWORD serialNumber = 0, maxComponentLen = 0, fileSystemFlags = 0;
     char fileSystemName[MAX_PATH + 1] = { 0 };  
@@ -3864,14 +3837,67 @@ void CmdDiskInfo(const std::string& args) {
         return;
     }
 
+    // Get drive type
+    UINT driveType = GetDriveTypeA((driveLetter + "\\").c_str());
+    std::string driveTypeStr;
+    switch (driveType) {
+        case DRIVE_UNKNOWN: driveTypeStr = "Unknown"; break;
+        case DRIVE_NO_ROOT_DIR: driveTypeStr = "Invalid Root Path"; break;
+        case DRIVE_REMOVABLE: driveTypeStr = "Removable"; break;
+        case DRIVE_FIXED: driveTypeStr = "Fixed"; break;
+        case DRIVE_REMOTE: driveTypeStr = "Network"; break;
+        case DRIVE_CDROM: driveTypeStr = "CD-ROM"; break;
+        case DRIVE_RAMDISK: driveTypeStr = "RAM Disk"; break;
+        default: driveTypeStr = "Other"; break;
+    }
+
+    // Get disk space info
+    ULARGE_INTEGER freeBytesAvailable, totalNumberOfBytes, totalNumberOfFreeBytes;
+    BOOL spaceSuccess = GetDiskFreeSpaceExA(
+        (driveLetter + "\\").c_str(),
+        &freeBytesAvailable,
+        &totalNumberOfBytes,
+        &totalNumberOfFreeBytes
+    );
+
+    auto formatBytes = [](ULARGE_INTEGER bytes) -> std::string {
+        double size = static_cast<double>(bytes.QuadPart);
+        const char* units[] = { "B", "KB", "MB", "GB", "TB" };
+        int unitIndex = 0;
+        while (size >= 1024.0 && unitIndex < 4) {
+            size /= 1024.0;
+            ++unitIndex;
+        }
+        char buf[64];
+        snprintf(buf, sizeof(buf), "%.2f %s", size, units[unitIndex]);
+        return std::string(buf);
+    };
+
     std::cout << "[diskinfo] Drive: " << driveLetter << "\n";
+    std::cout << "  Drive Type: " << driveTypeStr << "\n";
     std::cout << "  Volume Label: " << (strlen(volumeName) ? volumeName : "(none)") << "\n";
     std::cout << "  Serial Number: " << std::hex << std::uppercase
               << ((serialNumber >> 16) & 0xFFFF) << "-"
               << (serialNumber & 0xFFFF) << std::dec << "\n";
     std::cout << "  File System: " << fileSystemName << "\n";
-}
 
+    if (spaceSuccess) {
+        std::cout << "  Total Size: " << formatBytes(totalNumberOfBytes) << "\n";
+        std::cout << "  Free Space: " << formatBytes(totalNumberOfFreeBytes) << "\n";
+    } else {
+        std::cout << "  Failed to get disk space info.\n";
+    }
+
+    // Optional: Decode some file system flags
+    std::cout << "  File System Flags: ";
+    if (fileSystemFlags & FILE_READ_ONLY_VOLUME) std::cout << "ReadOnly ";
+    if (fileSystemFlags & FILE_SUPPORTS_ENCRYPTION) std::cout << "Encryption ";
+    if (fileSystemFlags & FILE_SUPPORTS_COMPRESSION) std::cout << "Compression ";
+    if (fileSystemFlags & FILE_SUPPORTS_SPARSE_FILES) std::cout << "SparseFiles ";
+    if (fileSystemFlags & FILE_SUPPORTS_REPARSE_POINTS) std::cout << "ReparsePoints ";
+    if (fileSystemFlags & FILE_SUPPORTS_REMOTE_STORAGE) std::cout << "RemoteStorage ";
+    std::cout << "\n";
+}
 
 void PrintRegistryStartupApps(HKEY rootKey, const std::string& subKey, const std::string& scope) {
     HKEY hKey;
@@ -3963,12 +3989,18 @@ void CmdSetTitle(const std::string& args) {
         return;
     }
 
-    if (SetConsoleTitleA(args.c_str())) {
-        std::cout << "[CTITLE] Title set to: " << args << "\n";
+    std::string titleToSet = args;
+    if (args == "reset") {
+        titleToSet = "Zephyr";
+    }
+
+    if (SetConsoleTitleA(titleToSet.c_str())) {
+        std::cout << "[CTITLE] Title set to: " << titleToSet << "\n";
     } else {
         std::cerr << "[CTITLE] Failed to set the window title.\n";
     }
 }
+
 
 void CopyRecursively(const fs::path& src, const fs::path& dst) {
     for (const auto& entry : fs::recursive_directory_iterator(src)) {
@@ -4734,6 +4766,7 @@ void CmdHelp(const std::string&) {
     "| dnsflush            - Flush DNS resolver cache                                                   |\n"
     "| firewall            - Show Windows firewall status                                               |\n"
     "| drives              - List all available logical drives                                          |\n"
+    "| lsusb               - List all available USB's                                                   |\n"
     "| smart               - Display SMART status of disk drives                                        |\n"
     "| gzip <file>         - Compress a file using zlib (produces .gz)                                  |\n"
     "| gunzip <file.gz>    - Decompress a .gz file using zlib                                           |\n"

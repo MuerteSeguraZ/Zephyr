@@ -3,7 +3,7 @@
 git add --all
 
 set MSG=%1
-if "%MSG%"=="" set MSG=Added DHCPv6 to linkup.
+if "%MSG%"=="" set MSG=Buffed linkup & usermgmt more.
 
 git commit -m "%MSG%"
 
