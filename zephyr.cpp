@@ -71,6 +71,7 @@
 #include "bigcommands/inspect.h"
 #include "list/list.h"
 #include "http/http.h"
+#include "diagnostics/diagnostics.h"
 #include "ANSI/ANSI_COLORS_H.h"
 
 #pragma comment(lib, "iphlpapi.lib")
@@ -334,6 +335,22 @@ void CmdHttp(const std::string& args) {
     }
 }
 
+void CmdDiagnostics(const std::string& args) {
+    std::istringstream iss(args);
+    std::string subcmd;
+    iss >> subcmd;
+
+    std::string remainingArgs;
+    std::getline(iss, remainingArgs);
+    remainingArgs.erase(0, remainingArgs.find_first_not_of(" \t"));
+
+    if (subcmd == "integrity") {
+        CmdDiagnosticsIntegrity(remainingArgs);
+    } else if (subcmd == "drivers") {
+        CmdDiagnosticsDrivers(remainingArgs);
+    } 
+}
+
 std::unordered_map<std::string, std::function<void(const std::string&)>> commands = {
     {"list", CmdList}, {"tree", CmdTreeList}, {"send", CmdSend}, {"zap", CmdZap}, {"fzap", CmdFZap}, {"fhash", CmdFHash}, {"shift", CmdShift},
     {"mkplace", CmdMkplace}, {"clear", CmdClear}, {"bye", CmdBye},
@@ -356,7 +373,7 @@ std::unordered_map<std::string, std::function<void(const std::string&)>> command
     {"grep", CmdGrep}, {"sed", CmdSed}, {"basename", CmdBasename}, {"head", CmdHead}, {"tail", CmdTail}, {"wc", CmdWc}, {"loadavg", CmdLoadAvg}, {"winloadavg", CmdWinLoadAvg},
     {"mounts", CmdMounts}, {"gpuinfo", CmdGPUInfo}, {"biosinfo", CmdBIOSInfo}, {"raminfo", CmdRamInfo}, {"userinfo", CmdUserInfo}, {"whoami", CmdWhoAmI}, {"groups", CmdGroups}, {"hexdump", CmdHexdump},
     {"jobs", CmdJobs}, {"bgjob", CmdBgJob}, {"fgjob", CmdFgJob}, {"stopjob", CmdStopJob}, {"startjob", CmdStartJob}, {"clipcopy", CmdClipCopy},
-    {"inspect", CmdInspect}, {"usermgmt", CmdUserMgmt}, {"http", CmdHttp}
+    {"inspect", CmdInspect}, {"usermgmt", CmdUserMgmt}, {"http", CmdHttp}, {"diagn", CmdDiagnostics}
 };
 
 void EnableVirtualTerminalProcessing() {
