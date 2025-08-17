@@ -540,6 +540,53 @@ bool RunZshIfExists(const std::string& command, std::string& args) {
     }
 }
 
+bool RunFromPath(const std::string& command, const std::string& args) {
+    namespace fs = std::filesystem;
+
+    const char* pathEnv = std::getenv("PATH");
+    const char* pathextEnv = std::getenv("PATHEXT");
+
+    if (!pathEnv) return false;
+
+    // Default PATHEXT if not set
+    std::string pathextStr = pathextEnv ? pathextEnv : ".COM;.EXE;.BAT;.CMD";
+    std::stringstream ssExt(pathextStr);
+    std::vector<std::string> extensions;
+    std::string ext;
+
+    while (std::getline(ssExt, ext, ';')) {
+        if (!ext.empty() && ext[0] != '.') ext = "." + ext; // Normalize
+        extensions.push_back(ext);
+    }
+
+    // Always allow "no extension" too (e.g. "python3")
+    extensions.insert(extensions.begin(), "");
+
+    std::string pathStr(pathEnv);
+    std::stringstream ss(pathStr);
+    std::string dir;
+
+    while (std::getline(ss, dir, ';')) { // PATH on Windows uses ';'
+        fs::path basePath = fs::path(dir) / command;
+
+        for (const auto& e : extensions) {
+            fs::path candidate = basePath;
+            candidate += e;
+
+            if (fs::exists(candidate)) {
+                std::string fullCmd = "\"" + candidate.string() + "\"";
+                if (!args.empty()) {
+                    fullCmd += " " + args;
+                }
+                int ret = std::system(fullCmd.c_str());
+                return (ret == 0);
+            }
+        }
+    }
+
+    return false; // Not found anywhere in PATH
+}
+
 int main() {
     EnableVirtualTerminalProcessing();
 
@@ -562,23 +609,27 @@ int main() {
         } else {
             if (!RunBatchIfExists(cmd, args)) {
                 if (!RunExeIfExists(cmd, args)) {
-                    if (!RunPowershellIfExists(cmd, args)) {
-                        if (!RunVbsIfExists(cmd, args)) {
-                            if (!RunShellIfExists(cmd, args)) {
-                                if (!RunPythonIfExists(cmd, args)) {
-                                    if (!RunJavaScriptIfExists(cmd, args)) {
-                                        if (!RunZshIfExists(cmd, args)) {
-                                            std::cout << "Command '" << cmd << "' isn't recognized as an internal or external command." << std::endl;
+                    if (!RunFromPath(cmd, args)) {
+                        if (!RunPowershellIfExists(cmd, args)) {
+                            if (!RunVbsIfExists(cmd, args)) {
+                                if (!RunShellIfExists(cmd, args)) {
+                                    if (!RunPythonIfExists(cmd, args)) {
+                                        if (!RunJavaScriptIfExists(cmd, args)) {
+                                            if (!RunZshIfExists(cmd, args)) {
+                                                if (!RunCppIfExists(cmd, args)) {
+                                                std::cout << "Command '" << cmd << "' isn't recognized as an internal or external command." << std::endl;
+                                            }
+                                        }
                                     }
                                 }
                             }
                         }
                     }
                 }
-            }
-        }
-    }  
-} 
+            }  
+        } 
+    }
+}
 
     WSACleanup();
     return 0;

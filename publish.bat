@@ -3,7 +3,7 @@
 git add --all
 
 set MSG=%1
-if "%MSG%"=="" set MSG=Buffed linkup & usermgmt more.
+if "%MSG%"=="" set MSG=Added PATH and PATHEXT reading, so you can do, for example: "java --version" anywhere.
 
 git commit -m "%MSG%"
 

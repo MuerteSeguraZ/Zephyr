@@ -38,8 +38,7 @@ PURGE                   MAKE SO THAT THE STATUS (200 = ANSI_BOLD_GREEN. OTHER RE
 6. Add Subnetmasks        ADDED
 7. DHCP6 (finally)
 
-
-## my head is full of parasites
+8. Add path reading and PATHEXT reading.         DONE
 ## buildandrun.bat
 
 
