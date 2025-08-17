@@ -16,4 +16,6 @@ void CmdHttpConnect(const std::string& args);
 void CmdHttpPropFind(const std::string& args);
 void CmdHttpDownload(const std::string& args);
 void CmdHttpPurge(const std::string& args);
+void CmdHttpReport(const std::string& args);
+void CmdHttpMkcol(const std::string& args);
 void CmdHttpHelp(const std::string& args);

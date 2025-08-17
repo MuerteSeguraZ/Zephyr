@@ -203,10 +203,14 @@ void CmdFgJob(const std::string& args);
 void CmdStopJob(const std::string& args);
 void CmdStartJob(const std::string& args);
 void CmdClipCopy(const std::string& args);
+void CmdClipClear(const std::string& args);
+void CmdMemDump(const std::string& args);
+void CmdMemInfo(const std::string& args);
+void CmdMoboInfo(const std::string& args);
 void CmdFSize(const std::string& arg);
 void CmdDrywall(const std::string& args);
 bool RunBatchIfExists(const std::string& cmd, const std::string& args);
-void DeleteContents(const fs::path& dir);
+size_t DeleteContents(const fs::path& dir);
 void CmdInspect(const std::string& args) {
     std::istringstream iss(args);
     std::string subcmd;
@@ -328,6 +332,10 @@ void CmdHttp(const std::string& args) {
         CmdHttpDownload(remainingArgs);
     } else if (subcmd == "purge") {
         CmdHttpPurge(remainingArgs);  
+    } else if (subcmd == "report") {
+        CmdHttpReport(remainingArgs);
+    } else if (subcmd == "mkcol") {
+        CmdHttpMkcol(remainingArgs);
     } else if (subcmd == "help" || subcmd == "?") {
         CmdHttpHelp(remainingArgs);
     } else {
@@ -363,11 +371,11 @@ std::unordered_map<std::string, std::function<void(const std::string&)>> command
     {"linkup", CmdLinkup}, {"ntwkadp", CmdNetworkAdapters}, {"diskinfo", CmdDiskInfo}, {"du", CmdDU},
     {"ctitle", CmdSetTitle}, {"sconfig", CmdSconfig}, {"startupapps", CmdStartupApps}, 
     {"mconfig", CmdMConfig}, {"version", CmdVersion}, {"cutemessage", CmdCuteMessage},
-    {"smlink", CmdSmLink}, {"procmon", CmdProcMon}, 
+    {"smlink", CmdSmLink}, {"procmon", CmdProcMon},  {"meminfo", CmdMemInfo}, {"motherbinfo", CmdMoboInfo},
     {"cpuinfo", CmdCpuInfo}, {"uptime", CmdUptime}, {"netstat", CmdNetstat}, {"mirror", CmdMirror}, 
     {"tempclean", CmdTempClean}, {"killtree", CmdKillTree}, {"pingtest", CmdPingTest}, 
     {"scan", CmdScanWrapper}, {"hop", CmdHop}, {"stat", CmdStat}, {"fmeta", CmdFMeta}, {"fsize", CmdFSize},
-    {"checkadmin", CmdCheckAdminWrapper}, {"dnsflush", CmdDnsFlush},
+    {"checkadmin", CmdCheckAdminWrapper}, {"dnsflush", CmdDnsFlush}, {"clipclear", CmdClipClear}, {"memdump", CmdMemDump},
     {"firewall", CmdFirewallStatus}, {"drives", CmdDrives}, {"smart", CmdSmartStatus}, {"lsusb", CmdLsusb},
     {"tar", CmdTar}, {"gzip", CmdGzip}, {"gunzip", CmdGunzip}, {"zip", CmdZip}, {"unzip", CmdUnzip}, 
     {"grep", CmdGrep}, {"sed", CmdSed}, {"basename", CmdBasename}, {"head", CmdHead}, {"tail", CmdTail}, {"wc", CmdWc}, {"loadavg", CmdLoadAvg}, {"winloadavg", CmdWinLoadAvg},
@@ -1350,6 +1358,68 @@ void CmdLsusb(const std::string& args) {
     SetupDiDestroyDeviceInfoList(deviceInfoSet);
 }
 
+void CmdMemInfo(const std::string& args) {
+    MEMORYSTATUSEX memStatus;
+    memStatus.dwLength = sizeof(memStatus);
+
+    if (!GlobalMemoryStatusEx(&memStatus)) {
+        std::cerr << ANSI_RED << "Failed to retrieve memory information.\n" << ANSI_RESET;
+        return;
+    }
+
+    auto toMB = [](SIZE_T bytes) { return bytes / (1024 * 1024); };
+    auto toGB = [](SIZE_T bytes) { return bytes / (1024.0 * 1024.0 * 1024.0); };
+
+    auto printSection = [&](const std::string& title, DWORDLONG total, DWORDLONG avail, DWORDLONG used) {
+        std::cout << ANSI_YELLOW << ">> " << title << "\n" << ANSI_RESET;
+        std::cout << "  Total     : " << toMB(total) << " MB (" << std::fixed << std::setprecision(2) << toGB(total) << " GB)\n";
+        std::cout << "  Available : " << toMB(avail) << " MB (" << std::fixed << std::setprecision(2) << toGB(avail) << " GB)\n";
+        std::cout << "  Used      : " << toMB(used) << " MB (" << std::fixed << std::setprecision(2) << toGB(used) << " GB)\n";
+        std::cout << "  Usage     : " << std::fixed << std::setprecision(2) << (double)used / total * 100.0 << "%\n";
+    };
+
+    DWORDLONG usedPhys = memStatus.ullTotalPhys - memStatus.ullAvailPhys;
+    DWORDLONG usedPage = memStatus.ullTotalPageFile - memStatus.ullAvailPageFile;
+    DWORDLONG usedVirt = memStatus.ullTotalVirtual - memStatus.ullAvailVirtual;
+
+    std::cout << ANSI_CYAN << "=== Detailed Memory Information ===\n" << ANSI_RESET;
+
+    printSection("Physical Memory (RAM)", memStatus.ullTotalPhys, memStatus.ullAvailPhys, usedPhys);
+    printSection("Page File (Swap)", memStatus.ullTotalPageFile, memStatus.ullAvailPageFile, usedPage);
+
+    std::cout << ANSI_YELLOW << ">> Virtual Memory (User-Mode Limit on 64-bit)\n" << ANSI_RESET;
+    std::cout << "  Total     : " << toMB(memStatus.ullTotalVirtual) << " MB (" << toGB(memStatus.ullTotalVirtual) << " GB)\n";
+    std::cout << "  Available : " << toMB(memStatus.ullAvailVirtual) << " MB (" << toGB(memStatus.ullAvailVirtual) << " GB)\n";
+    std::cout << "  Used      : " << toMB(usedVirt) << " MB (" << toGB(usedVirt) << " GB)\n";
+    std::cout << "  Usage     : " << std::fixed << std::setprecision(2) << (double)usedVirt / memStatus.ullTotalVirtual * 100.0 << "%\n";
+
+    std::cout << ANSI_YELLOW << ">> Memory Load: " << (int)memStatus.dwMemoryLoad << "%\n" << ANSI_RESET;
+
+    PERFORMANCE_INFORMATION perfInfo;
+    if (GetPerformanceInfo(&perfInfo, sizeof(perfInfo))) {
+        std::cout << ANSI_YELLOW << ">> Performance Info (Pages, " << perfInfo.PageSize / 1024 << " KB per page)\n" << ANSI_RESET;
+        std::cout << "  Commit Total      : " << perfInfo.CommitTotal << " pages\n";
+        std::cout << "  Commit Limit      : " << perfInfo.CommitLimit << " pages\n";
+        std::cout << "  Commit Peak       : " << perfInfo.CommitPeak << " pages\n";
+        std::cout << "  Physical Total    : " << perfInfo.PhysicalTotal << " pages\n";
+        std::cout << "  Physical Available: " << perfInfo.PhysicalAvailable << " pages\n";
+        std::cout << "  Physical Used     : " << perfInfo.PhysicalTotal - perfInfo.PhysicalAvailable << " pages\n";
+        std::cout << "  System Cache      : " << perfInfo.SystemCache << " pages\n";
+    }
+
+    // NUMA nodes (optional)
+    ULONG highestNode = 0;
+    if (GetNumaHighestNodeNumber(&highestNode)) {
+        std::cout << ANSI_YELLOW << ">> NUMA Nodes\n" << ANSI_RESET;
+        for (ULONG node = 0; node <= highestNode; ++node) {
+            ULONGLONG freeBytes = 0;
+            if (GetNumaAvailableMemoryNode(node, &freeBytes)) {
+                std::cout << "  Node " << node << " Free Memory: " << toMB(freeBytes) << " MB (" << toGB(freeBytes) << " GB)\n";
+            }
+        }
+    }
+}
+
 void CmdWc(const std::string& args) {
     std::istringstream iss(args);
     std::string filename;
@@ -1659,16 +1729,23 @@ void CmdNetstat(const std::string& args) {
     free(udpTable);
 }
 
-void DeleteContents(const fs::path& dir) {
-    if (!fs::exists(dir)) return;
+size_t DeleteContents(const fs::path& dir) {
+    size_t count = 0;
+
+    if (!fs::exists(dir) || !fs::is_directory(dir)) {
+        return 0;
+    }
 
     for (const auto& entry : fs::directory_iterator(dir)) {
         try {
-            fs::remove_all(entry);
+            count += fs::remove_all(entry); // remove_all returns # of files/dirs removed
         } catch (const std::exception& e) {
-            std::cerr << "[TEMPCLEAN] Failed to delete " << entry.path() << ": " << e.what() << "\n";
+            std::cerr << "[ERROR] Failed to remove: " << entry.path()
+                      << " (" << e.what() << ")\n";
         }
     }
+
+    return count;
 }
 
 void CmdPingTest(const std::string& args) {
@@ -1821,8 +1898,6 @@ bool KillProcessTree(DWORD parentPID) {
     return allKilled;
 }
 
-
-
 void CmdKillTree(const std::string& args) {
     if (args.empty()) {
         std::cout << "[KILLTREE] Usage: killtree <PID>\n";
@@ -1851,8 +1926,6 @@ void CmdKillTree(const std::string& args) {
     }
 }
 
-
-
 void CmdTempClean(const std::string&) {
     std::vector<std::string> tempPaths;
 
@@ -1867,13 +1940,17 @@ void CmdTempClean(const std::string&) {
 
     std::cout << "[TEMPCLEAN] Cleaning temporary files...\n";
 
+    size_t totalDeleted = 0;
     for (const auto& path : tempPaths) {
         fs::path tempDir = fs::path(path);
         std::cout << "[TEMPCLEAN] Cleaning: " << tempDir << "\n";
-        DeleteContents(tempDir);
+        size_t deleted = DeleteContents(tempDir);
+        totalDeleted += deleted;
+        std::cout << "  -> Deleted " << deleted << " items.\n";
     }
 
-    std::cout << "[TEMPCLEAN] Temp cleaning complete.\n";
+    std::cout << "[TEMPCLEAN] Temp cleaning complete. Total deleted: "
+              << totalDeleted << " items.\n";
 }
 
 void CmdList(const std::string& args) {
@@ -2049,6 +2126,61 @@ void CmdProcMon(const std::string&) {
     }
 }
 
+void CmdMemDump(const std::string& args) {
+    // Parse arguments
+    size_t space = args.find(' ');
+    if (space == std::string::npos) {
+        std::cerr << "[memdump] Usage: memdump <pid> <file>\n";
+        return;
+    }
+
+    DWORD pid = std::stoul(args.substr(0, space));
+    std::string outFile = args.substr(space + 1);
+
+    HANDLE hProc = OpenProcess(PROCESS_VM_READ | PROCESS_QUERY_INFORMATION, FALSE, pid);
+    if (!hProc) {
+        std::cerr << "[memdump] Failed to open process " << pid << ". Error: " << GetLastError() << "\n";
+        return;
+    }
+
+    SYSTEM_INFO sysInfo;
+    GetSystemInfo(&sysInfo);
+    LPBYTE addr = (LPBYTE)sysInfo.lpMinimumApplicationAddress;
+    LPBYTE maxAddr = (LPBYTE)sysInfo.lpMaximumApplicationAddress;
+
+    std::ofstream file(outFile, std::ios::binary);
+    if (!file) {
+        std::cerr << "[memdump] Failed to open output file: " << outFile << "\n";
+        CloseHandle(hProc);
+        return;
+    }
+
+    MEMORY_BASIC_INFORMATION mbi;
+    size_t totalBytes = 0;
+
+    while (addr < maxAddr) {
+        if (VirtualQueryEx(hProc, addr, &mbi, sizeof(mbi)) == sizeof(mbi)) {
+            if (mbi.State == MEM_COMMIT &&
+                (mbi.Protect & (PAGE_READWRITE | PAGE_READONLY | PAGE_EXECUTE_READ))) {
+                std::vector<char> buffer(mbi.RegionSize);
+                SIZE_T bytesRead = 0;
+                if (ReadProcessMemory(hProc, addr, buffer.data(), mbi.RegionSize, &bytesRead)) {
+                    file.write(buffer.data(), bytesRead);
+                    totalBytes += bytesRead;
+                }
+            }
+            addr += mbi.RegionSize;
+        } else {
+            break;
+        }
+    }
+
+    file.close();
+    CloseHandle(hProc);
+    std::cout << "[memdump] Dumped " << totalBytes << " bytes from process " << pid 
+              << " to " << outFile << "\n";
+    }
+
 void PrintFeature(const std::string& name, bool supported) {
     std::cout << "  " << std::left << std::setw(10) << name << ": ";
     std::cout << (supported ? ANSI_BOLD_GREEN "Yes" ANSI_RESET : ANSI_BOLD_RED "No" ANSI_RESET) << std::endl;
@@ -2171,6 +2303,7 @@ void CmdCpuInfo(const std::string& args) {
     bool avx512f = (cpuInfo[1] & (1 << 16));
     bool sha   = (cpuInfo[1] & (1 << 29));
     bool sgx   = (cpuInfo[1] & (1 << 2));
+    bool smep  = (cpuInfo[2] & (1 << 7));
 
     PrintFeature("SSE4.1", sse41);
     PrintFeature("SSE4.2", sse42);
@@ -2184,6 +2317,7 @@ void CmdCpuInfo(const std::string& args) {
     PrintFeature("RDRAND", rdrand);
     PrintFeature("SHA",    sha);
     PrintFeature("SGX",    sgx);
+    PrintFeature("SMEP",   smep);
 
     std::cout << ANSI_BOLD_CYAN "=========================================================" ANSI_RESET << std::endl;
 }
@@ -2387,7 +2521,58 @@ void CmdWhoAmI(const std::string& args) {
     CloseHandle(hToken);
 }
 
+void CmdMoboInfo(const std::string& args) {
+    if (!args.empty()) {
+        std::cout << ANSI_BOLD_RED "Usage: moboardinfo" ANSI_RESET << std::endl;
+        return;
+    }
 
+    HKEY hKey;
+    LONG result = RegOpenKeyExA(HKEY_LOCAL_MACHINE,
+        "HARDWARE\\DESCRIPTION\\System\\BIOS", 0, KEY_READ, &hKey);
+
+    if (result != ERROR_SUCCESS) {
+        std::cout << "Failed to open registry key. Code: " << result << std::endl;
+        return;
+    }
+
+    auto readString = [&](const char* valueName) -> std::string {
+        char buffer[256] = {};
+        DWORD size = sizeof(buffer);
+        if (RegQueryValueExA(hKey, valueName, nullptr, nullptr, (BYTE*)buffer, &size) == ERROR_SUCCESS)
+            return buffer;
+        return "Unknown";
+    };
+
+    std::string baseManufacturer = readString("BaseBoardManufacturer");
+    std::string baseProduct      = readString("BaseBoardProduct");
+    std::string baseVersion      = readString("BaseBoardVersion");
+    std::string baseSerial       = readString("BaseBoardSerialNumber");
+    std::string biosVendor       = readString("BIOSVendor");
+    std::string biosVersion      = readString("BIOSVersion");
+    std::string biosDate         = readString("BIOSReleaseDate");
+    std::string systemManufacturer = readString("SystemManufacturer");
+    std::string systemProduct      = readString("SystemProductName");
+    std::string systemSKU          = readString("SystemSKUNumber");
+    std::string systemFamily       = readString("SystemFamily");
+    std::string systemSerial       = readString("SystemSerialNumber");
+
+    RegCloseKey(hKey);
+
+    std::cout << ANSI_BOLD_CYAN "================== Motherboard Information ==================" ANSI_RESET << std::endl;
+    std::cout << "BaseBoard Manufacturer: " << baseManufacturer << std::endl;
+    std::cout << "BaseBoard Product     : " << baseProduct << std::endl;
+    std::cout << "BaseBoard Version     : " << baseVersion << std::endl;
+    std::cout << "BaseBoard Serial      : " << baseSerial << std::endl;
+    std::cout << "BIOS Vendor           : " << biosVendor << std::endl;
+    std::cout << "BIOS Version          : " << biosVersion << std::endl;
+    std::cout << "BIOS Release Date     : " << biosDate << std::endl;
+    std::cout << "System Manufacturer   : " << systemManufacturer << std::endl;
+    std::cout << "System Product Name   : " << systemProduct << std::endl;
+    std::cout << "System SKU            : " << systemSKU << std::endl;
+    std::cout << "System Family         : " << systemFamily << std::endl;
+    std::cout << "System Serial Number  : " << systemSerial << std::endl;
+}
 
 void CmdSend(const std::string& args) {
     std::istringstream iss(args);
@@ -4752,6 +4937,31 @@ void CmdClipCopy(const std::string& args) {
     std::cout << "Copied to clipboard.\n";
 }
 
+void CmdClipClear(const std::string& args) {
+    (void)args; // unused
+
+    bool opened = false;
+    for (int i = 0; i < 5; ++i) {
+        if (OpenClipboard(nullptr)) {
+            opened = true;
+            break;
+        }
+        Sleep(100);
+    }
+
+    if (!opened) {
+        std::cerr << "Failed to open clipboard after multiple attempts.\n";
+        return;
+    }
+
+    if (!EmptyClipboard()) {
+        std::cerr << "Failed to clear clipboard.\n";
+    } else {
+        std::cout << "Clipboard cleared.\n";
+    }
+
+    CloseClipboard();
+}
 
 bool RunBatchIfExists(const std::string& command, const std::string& args) {
     namespace fs = std::filesystem;
@@ -4856,6 +5066,9 @@ void CmdHelp(const std::string&) {
     "| bgjob               - Move a job to the background by ID                                         |\n"
     "| fgjob               - Move a job to the foreground by ID                                         |\n"
     "| clipcopy <file|text>- Copy file contents or raw text to the clipboard                            |\n"
+    "| clipclear           - Clear the clipboard                                                        |\n"
+    "| memdump <pid> <file> - Dump the memory of a process with PID <pid> into <file>.                  |\n"
+    "| meminfo             - Show memory info (RAM, page file, virtual memory)                          |\n"
     "| inspect             - Run this to get the inspect help command.                                  |\n"     
     "| http                - Run this to get the HTTP Client help command.                              |\n"                            
     "| You can also run .bat, .exe, .ps1, .py, .js, .cpp and .vbs files.                                |\n"

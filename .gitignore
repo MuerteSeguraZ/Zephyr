@@ -9,3 +9,12 @@
 
 # Ignore hello folder
 hello/
+
+# Ignore all .log files
+*.log
+
+# Ignore all .bak files
+*.bak
+
+# Ignore all .tmp files
+*.tmp

@@ -19,7 +19,7 @@
 
 ### 🌐 HTTP Tools
 Send and analyze various HTTP requests directly from your shell:
-- `http get <url>` — Send a GET request
+- `http get http get <URL> [header1|header2|...] [--cookie-jar file]` — Send a GET request
 - `http post <url> <headers|body>` — Send a POST request
 - `http put <url> <headers|body>` — Send a PUT request
 - `http patch [-H "Header"] [-d "body"] <url>` — Send a PATCH request
@@ -33,6 +33,8 @@ Send and analyze various HTTP requests directly from your shell:
 - `http connect <proxyHost:port> <targetHost:port> [-H "Header"]` — Proxy tunnel
 - `http download <url> <output filename>` — Download a file
 - `http purge <URL> [header1|header2|...] [|payload]` - Send an PURGE request
+- `http report [-H \"Header: value\"] [-D depth] <url> [body]` — Send an HTTP REPORT request
+- `http mkcol [-H \"Header: value\"] <URL> [body]` — Send an HTTP MKCOL request
 - `http help` — HTTP usage reference
 
 ---
@@ -62,6 +64,9 @@ Efficiently manage files, directories, and navigation:
 - `list`, `tree`, `look`, `hop`, `whereami`
 - `send <src> <dst>`, `shift <src> <dst>` — Copy/Move
 - `zap`, `fzap` — Delete and secure delete
+- `fhash <file>` - Calculate and display the hash of a file
+- `fmeta <file>` — View file metadata
+- `fsize <file>` — Get file size
 - `read`, `peek`, `head`, `tail`, `wc` — Read files
 - `write <file> <text>` — Append to file
 - `mkplace <dir>`, `mirror <src> <dst>`, `rename`
@@ -72,13 +77,13 @@ Efficiently manage files, directories, and navigation:
 ### 🛠️ System Utilities
 Explore and control system components:
 - `sysinfo`, `version`, `echoe`, `ctitle`
-- `cpuinfo`, `gpuinfo`, `raminfo`, `biosinfo`
+- `cpuinfo`, `gpuinfo`, `raminfo`, `biosinfo`, `motherbinfo`, `meminfo`,
 - `userinfo`, `whoami [-ext]`, `uptime`
 - `battery`, `diskinfo`, `du`, `drives`, `smart`
 - `procmon`, `killtree <pid>`, `endproc <name>`
 - `sconfig <start|stop> <service>`, `mconfig <device> <enable|disable>`
 - `checkadmin`, `dnsflush`, `firewall`, `env`, `refreshenv`, `date`
-
+- `bgjob`, `fgjob`, `startjob <command>`, `stopjob <jobid>`, `jobs`
 ---
 
 ### 🌐 Networking Tools
@@ -92,6 +97,7 @@ Network diagnostics and monitoring built-in:
 ### 🧪 Miscellaneous
 - `run <program>` — Execute an external program
 - `bye`, `exit`, `clear` — Exit or refresh shell
+- `clipcopy`, `clipclear` - Copy text to clipboard or clear clipboard
 - `cutemessage` — 💖 A special hidden feature for someone special
 - `help`, `?` — View all available commands
 
