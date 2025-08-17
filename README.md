@@ -97,6 +97,17 @@ Network diagnostics and monitoring built-in:
 
 ---
 
+## 🎩 Scripts Support
+`Zephyr supports running various script files directly from the shell, including:`
+- `.bat`
+- `.exe`
+- `.ps1`
+- `.py`
+- `.js`
+- `.cpp`
+- `.vbs`
+- `It also reads from PATH and PATHEXT.`
+
 ## 🛡️ Permissions
 
 `Some features (like service control, firewall, or privilege enumeration) may require Administrator rights. Use checkadmin to verify current elevation status.`
