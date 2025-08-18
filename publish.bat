@@ -2,8 +2,10 @@
 
 git add --all
 
-set MSG=%1
-if "%MSG%"=="" set MSG=Added a few more WebDAV HTTP commands and some info commands, like meminfo and motherbinfo.
+set "MSG=%~1"
+if "%MSG%"=="" set "MSG=Added more WebDAV commands: bind, rebind, unbind, proppatch, patchform"
+
+git status
 
 git commit -m "%MSG%"
 

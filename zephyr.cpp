@@ -328,6 +328,8 @@ void CmdHttp(const std::string& args) {
         CmdHttpConnect(remainingArgs);
     } else if (subcmd == "propfind") {
         CmdHttpPropFind(remainingArgs);
+    } else if (subcmd == "proppatch") {
+        CmdHttpPropPatch(remainingArgs);
     } else if (subcmd == "download") {
         CmdHttpDownload(remainingArgs);
     } else if (subcmd == "purge") {
@@ -336,6 +338,14 @@ void CmdHttp(const std::string& args) {
         CmdHttpReport(remainingArgs);
     } else if (subcmd == "mkcol") {
         CmdHttpMkcol(remainingArgs);
+    } else if (subcmd == "bind") {
+        CmdHttpBind(remainingArgs);
+    } else if (subcmd == "rebind") {
+        CmdHttpRebind(remainingArgs);
+    } else if (subcmd == "unbind") {
+        CmdHttpUnbind(remainingArgs);
+    } else if (subcmd == "patchform") {
+        CmdHttpPatchForm(remainingArgs);
     } else if (subcmd == "help" || subcmd == "?") {
         CmdHttpHelp(remainingArgs);
     } else {

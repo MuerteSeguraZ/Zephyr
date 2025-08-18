@@ -23,6 +23,7 @@ Send and analyze various HTTP requests directly from your shell:
 - `http post <url> <headers|body>` — Send a POST request
 - `http put <url> <headers|body>` — Send a PUT request
 - `http patch [-H "Header"] [-d "body"] <url>` — Send a PATCH request
+- `http patchform [-H "Header"] [-d "body"] <url>` — Send a PATCH request with form data
 - `http delete [-H "Header"] <url>` — Send a DELETE request
 - `http head [-H "Header"] <url>` — Send a HEAD request
 - `http options [-H "Header"] <url>` — Send an OPTIONS request
@@ -30,6 +31,10 @@ Send and analyze various HTTP requests directly from your shell:
 - `http link [-H "Header"] <url>` — Send a LINK request
 - `http unlink [-H "Header"] <url>` — Send an UNLINK request
 - `http propfind [-H "Header"] <url>` — Send a PROPFIND request
+- `http proppatch [-H "Header"] [--depth 0|1|infinity] -d "<xml>" <url>` — Send a PROPPATCH request
+- `http bind [-H "Header"] <url> [body]` — Send a BIND request
+- `http rebind [-H "Header"] <url> [body]` — Send a REBIND request
+- `http unbind [-H "Header"] <url>` — Send an UNBIND request
 - `http connect <proxyHost:port> <targetHost:port> [-H "Header"]` — Proxy tunnel
 - `http download <url> <output filename>` — Download a file
 - `http purge <URL> [header1|header2|...] [|payload]` - Send an PURGE request
