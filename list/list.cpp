@@ -64,6 +64,59 @@ std::wstring FormatUnixTime(DWORD timestamp) {
     return std::wstring(buffer);
 }
 
+std::wstring FormatUserFlags(DWORD flags) {
+    std::vector<std::wstring> descriptions;
+
+    if (flags & UF_ACCOUNTDISABLE) descriptions.push_back(L"Disabled");
+    if (flags & UF_PASSWD_NOTREQD) descriptions.push_back(L"Password not required");
+    if (flags & UF_PASSWD_CANT_CHANGE) descriptions.push_back(L"Password can’t be changed");
+    if (flags & UF_DONT_EXPIRE_PASSWD) descriptions.push_back(L"Password never expires");
+    if (flags & UF_LOCKOUT) descriptions.push_back(L"Locked out");
+    if (flags & UF_HOMEDIR_REQUIRED) descriptions.push_back(L"Home dir required");
+    if (flags & UF_SCRIPT) descriptions.push_back(L"Logon script");
+
+    if (descriptions.empty()) return L"(none)";
+
+    std::wstringstream ss;
+    for (size_t i = 0; i < descriptions.size(); i++) {
+        ss << descriptions[i];
+        if (i < descriptions.size() - 1) ss << L", ";
+    }
+    return ss.str();
+}
+
+std::wstring FormatPrivilegeLevel(DWORD priv) {
+    switch (priv) {
+        case USER_PRIV_GUEST: return L"Guest";
+        case USER_PRIV_USER:  return L"User";
+        case USER_PRIV_ADMIN: return L"Administrator";
+        default:              return L"Unknown";
+    }
+}
+
+std::wstring FormatTime(DWORD secondsSince1970) {
+    if (secondsSince1970 == 0) return L"(never)";
+
+    ULONGLONG ull = static_cast<ULONGLONG>(secondsSince1970);
+    LONGLONG ll = static_cast<LONGLONG>(ull) * 10000000LL + 116444736000000000LL; 
+    // 100-nanosecond intervals since Jan 1, 1601 (UTC)
+
+    FILETIME ft;
+    ft.dwLowDateTime  = static_cast<DWORD>(ll);
+    ft.dwHighDateTime = static_cast<DWORD>(ll >> 32);
+
+    SYSTEMTIME stUTC, stLocal;
+    FileTimeToSystemTime(&ft, &stUTC);
+    SystemTimeToTzSpecificLocalTime(nullptr, &stUTC, &stLocal);
+
+    wchar_t buffer[128];
+    swprintf_s(buffer, 128, L"%02d/%02d/%04d %02d:%02d:%02d",
+               stLocal.wDay, stLocal.wMonth, stLocal.wYear,
+               stLocal.wHour, stLocal.wMinute, stLocal.wSecond);
+
+    return buffer;
+}
+
 void CmdListUsers(const std::string& args) {
     (void)args;
     std::wcout << L"[listusers] Listing all users on the system:\n";
@@ -325,6 +378,11 @@ void CmdListPrivileges(const std::string& args) {
 }
 
 void CmdListUserDetails(const std::string& args) {
+    if (args.empty()) {
+        std::wcout << L"[listuserdetails] Error: No username provided.\n";
+        return;
+    }
+
     std::wstring username(args.begin(), args.end());
     std::wcout << L"[listuserdetails] Details for user: " << username << L"\n";
 
@@ -338,10 +396,11 @@ void CmdListUserDetails(const std::string& args) {
     if (pUserInfo) {
         std::wcout << L"Full name: " << (pUserInfo->usri2_full_name ? pUserInfo->usri2_full_name : L"(none)") << L"\n";
         std::wcout << L"User comment: " << (pUserInfo->usri2_comment ? pUserInfo->usri2_comment : L"(none)") << L"\n";
-        std::wcout << L"Flags: " << pUserInfo->usri2_flags << L"\n";
-        std::wcout << L"Last logon: " << pUserInfo->usri2_last_logon << L"\n";
-        std::wcout << L"Password age (seconds): " << pUserInfo->usri2_password_age << L"\n";
-        std::wcout << L"User privilege level: " << pUserInfo->usri2_priv << L"\n";
+        std::wcout << L"Flags: " << FormatUserFlags(pUserInfo->usri2_flags) << L"\n";
+        std::wcout << L"Last logon: " << FormatTime(pUserInfo->usri2_last_logon) << L"\n";
+        std::wcout << L"Password age: " << pUserInfo->usri2_password_age
+                   << L" seconds (~" << pUserInfo->usri2_password_age / 86400 << L" days)\n";
+        std::wcout << L"User privilege level: " << FormatPrivilegeLevel(pUserInfo->usri2_priv) << L"\n";
 
         NetApiBufferFree(pUserInfo);
     }

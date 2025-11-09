@@ -3,7 +3,7 @@
 git add --all
 
 set "MSG=%~1"
-if "%MSG%"=="" set "MSG=Added more WebDAV commands: bind, rebind, unbind, proppatch, patchform"
+if "%MSG%"=="" set "MSG=few bug fixes and shadowcopies command"
 
 git status
 

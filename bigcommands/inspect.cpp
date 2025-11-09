@@ -154,41 +154,55 @@ void ShowFileTimestamps(const fs::path& path) {
 }
 
 void CmdInspectFile(const std::string& args) {
-    std::istringstream iss(args);
-    std::string cmd;
-    iss >> cmd;
-    std::string path;
-    std::getline(iss >> std::ws, path);
+    std::string path = args;
 
-    if (cmd == "file" && !path.empty()) {
-        fs::path fpath = fs::u8path(path);
-
-        if (!fs::exists(fpath)) {
-            std::cerr << "File does not exist.\n";
-            return;
-        }
-
-        std::cout << "File:         " << fpath.string() << "\n";
-        auto size = fs::file_size(fpath);
-        std::cout << "Size:         " << size << " bytes (" << HumanSize(size) << ")\n";
-
-        DWORD attrs = GetFileAttributesW(fpath.c_str());
-        if (attrs == INVALID_FILE_ATTRIBUTES) {
-            std::cerr << "Failed to get file attributes.\n";
-        } else {
-            std::cout << "Attributes:   ";
-            ShowFileAttributes(attrs);
-        }
-
-        ShowFileTimestamps(fpath);
-
-        std::cout << "Hashes:\n";
-        std::cout << " - MD5:    " << HashFile(fpath.string(), CALG_MD5) << "\n";
-        std::cout << " - SHA1:   " << HashFile(fpath.string(), CALG_SHA1) << "\n";
-        std::cout << " - SHA256: " << HashFile(fpath.string(), CALG_SHA_256) << "\n";
-    } else {
-        std::cerr << "Usage: inspect file <path>\n";
+    // Trim leading/trailing whitespace
+    if (!path.empty()) {
+        path.erase(0, path.find_first_not_of(" \t"));
+        path.erase(path.find_last_not_of(" \t") + 1);
     }
+
+    // If the user wrote "file <path>", remove the word "file"
+    if (path.rfind("file", 0) == 0) {
+        path = path.substr(4);
+        path.erase(0, path.find_first_not_of(" \t"));
+    }
+
+    // Remove surrounding quotes
+    if (!path.empty() && path.front() == '"' && path.back() == '"') {
+        path = path.substr(1, path.size() - 2);
+    }
+
+    if (path.empty()) {
+        std::cerr << "Usage: inspect file <path>\n";
+        return;
+    }
+
+    fs::path fpath = fs::u8path(path);
+
+    if (!fs::exists(fpath)) {
+        std::cerr << "File does not exist.\n";
+        return;
+    }
+
+    std::cout << "File:         " << fpath.string() << "\n";
+    auto size = fs::file_size(fpath);
+    std::cout << "Size:         " << size << " bytes (" << HumanSize(size) << ")\n";
+
+    DWORD attrs = GetFileAttributesW(fpath.c_str());
+    if (attrs == INVALID_FILE_ATTRIBUTES) {
+        std::cerr << "Failed to get file attributes.\n";
+    } else {
+        std::cout << "Attributes:   ";
+        ShowFileAttributes(attrs);
+    }
+
+    ShowFileTimestamps(fpath);
+
+    std::cout << "Hashes:\n";
+    std::cout << " - MD5:    " << HashFile(fpath.string(), CALG_MD5) << "\n";
+    std::cout << " - SHA1:   " << HashFile(fpath.string(), CALG_SHA1) << "\n";
+    std::cout << " - SHA256: " << HashFile(fpath.string(), CALG_SHA_256) << "\n";
 }
 
 ULONGLONG FileTimeToULL(const FILETIME& ft) {

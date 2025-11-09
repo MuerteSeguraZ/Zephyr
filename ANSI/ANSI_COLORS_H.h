@@ -16,14 +16,14 @@
 // ===========================
 //  Bright Colors (90–97)
 // ===========================
-#define ANSI_INTENSE_BLACK     "\x1b[90m"
-#define ANSI_INTENSE_RED       "\x1b[91m"
-#define ANSI_INTENSE_GREEN     "\x1b[92m"
-#define ANSI_INTENSE_YELLOW    "\x1b[93m"
-#define ANSI_INTENSE_BLUE      "\x1b[94m"
-#define ANSI_INTENSE_MAGENTA   "\x1b[95m"
-#define ANSI_INTENSE_CYAN      "\x1b[96m"
-#define ANSI_INTENSE_WHITE     "\x1b[97m"
+#define ANSI_BOLD_BLACK    "\x1b[90m"
+#define ANSI_BOLD_RED       "\x1b[91m"
+#define ANSI_BOLD_GREEN     "\x1b[92m"
+#define ANSI_BOLD_YELLOW    "\x1b[93m"
+#define ANSI_BOLD_BLUE      "\x1b[94m"
+#define ANSI_BOLD_MAGENTA   "\x1b[95m"
+#define ANSI_BOLD_CYAN      "\x1b[96m"
+#define ANSI_BOLD_WHITE     "\x1b[97m"
 
 // ======================
 //  Background Colors
@@ -68,6 +68,16 @@
 #define ANSI_OVERLINED     "\x1b[53m"
 
 // =========================
+//  SGR
+// =========================
+#define ANSI_SUPERSCRIPT       "\x1b[73m"
+#define ANSI_SUBSCRIPT         "\x1b[74m"
+#define ANSI_IDEOGRAM_UNDERLINE "\x1b[60m"
+#define ANSI_IDEOGRAM_DOUBLE_UNDERLINE "\x1b[61m"
+#define ANSI_PROPORTIONAL_SPACING "\x1b[90m"
+#define ANSI_NO_PROPORTIONAL_SPACING "\x1b[91m"
+
+// =========================
 //  Attribute Resets
 // =========================
 #define ANSI_NORMAL_INTENSITY   "\x1b[22m"
@@ -81,29 +91,8 @@
 #define ANSI_NO_OVERLINED       "\x1b[55m"
 
 // =======================
-//  Decorations + Colors
+//  Extended Colors
 // =======================
-#define ANSI_BOLD_BLACK    "\x1b[1;30m"
-#define ANSI_BOLD_RED      "\x1b[1;31m"
-#define ANSI_BOLD_GREEN    "\x1b[1;32m"
-#define ANSI_BOLD_YELLOW   "\x1b[1;33m"
-#define ANSI_BOLD_BLUE     "\x1b[1;34m"
-#define ANSI_BOLD_MAGENTA  "\x1b[1;35m"
-#define ANSI_BOLD_CYAN     "\x1b[1;36m"
-#define ANSI_BOLD_WHITE    "\x1b[1;37m"
-
-#define ANSI_UNDERLINE_BLACK   "\x1b[4;30m"
-#define ANSI_UNDERLINE_RED     "\x1b[4;31m"
-#define ANSI_UNDERLINE_GREEN   "\x1b[4;32m"
-#define ANSI_UNDERLINE_YELLOW  "\x1b[4;33m"
-#define ANSI_UNDERLINE_BLUE    "\x1b[4;34m"
-#define ANSI_UNDERLINE_MAGENTA "\x1b[4;35m"
-#define ANSI_UNDERLINE_CYAN    "\x1b[4;36m"
-#define ANSI_UNDERLINE_WHITE   "\x1b[4;37m"
-
-// ========================
-//  Extended Color Support (256-color palette)
-// ========================
 #define ANSI_FG_256(n) "\x1b[38;5;" #n "m"
 #define ANSI_BG_256(n) "\x1b[48;5;" #n "m"
 #define ANSI_FG_RGB(r,g,b) "\x1b[38;2;" #r ";" #g ";" #b "m"
@@ -114,15 +103,66 @@
 // ======================
 #define ANSI_CURSOR_HOME     "\x1b[H"
 #define ANSI_CURSOR_MOVE(row,col) "\x1b[" #row ";" #col "H"
+#define ANSI_CURSOR_UP(n)   "\x1b[" #n "A"
+#define ANSI_CURSOR_DOWN(n) "\x1b[" #n "B"
+#define ANSI_CURSOR_FORWARD(n) "\x1b[" #n "C"
+#define ANSI_CURSOR_BACK(n) "\x1b[" #n "D"
 #define ANSI_CURSOR_SAVE     "\x1b[s"
 #define ANSI_CURSOR_RESTORE  "\x1b[u"
 #define ANSI_CURSOR_HIDE     "\x1b[?25l"
 #define ANSI_CURSOR_SHOW     "\x1b[?25h"
+#define ANSI_CURSOR_POS      "\x1b[6n"
 
 // ======================
 //  Screen Controls
 // ======================
 #define ANSI_CLEAR_SCREEN    "\x1b[2J"
 #define ANSI_CLEAR_LINE      "\x1b[2K"
+#define ANSI_CLEAR_TO_EOL    "\x1b[0K"
+#define ANSI_CLEAR_TO_SOL    "\x1b[1K"
+#define ANSI_SCROLL_UP(n)    "\x1b[" #n "S"
+#define ANSI_SCROLL_DOWN(n)  "\x1b[" #n "T"
 
-#endif 
+// ======================
+//  Terminal Mode / OSC / DCS
+// ======================
+#define ANSI_SAVE_TITLE      "\x1b[22;0t"
+#define ANSI_RESTORE_TITLE   "\x1b[23;0t"
+#define ANSI_SET_TITLE(title) "\x1b]0;" title "\x07"
+#define ANSI_CLIPBOARD_COPY(text) "\x1b]52;c;" text "\x07"
+#define ANSI_CLIPBOARD_PASTE "\x1b]52;c;?\x07"
+#define ANSI_SET_RGB_FG(r,g,b) "\x1b]10;rgb:" #r "/" #g "/" #b "\x07"
+#define ANSI_SET_RGB_BG(r,g,b) "\x1b]11;rgb:" #r "/" #g "/" #b "\x07"
+#define ANSI_HYPERLINK(url,text) "\x1b]8;;" url "\x07" text "\x1b]8;;\x07"
+
+// ======================
+//  Mouse Reporting
+// ======================
+#define ANSI_MOUSE_CLICK_ON  "\x1b[?1000h"
+#define ANSI_MOUSE_CLICK_OFF "\x1b[?1000l"
+#define ANSI_MOUSE_DRAG_ON   "\x1b[?1002h"
+#define ANSI_MOUSE_DRAG_OFF  "\x1b[?1002l"
+#define ANSI_MOUSE_MOVE_ON   "\x1b[?1003h"
+#define ANSI_MOUSE_MOVE_OFF  "\x1b[?1003l"
+
+// ======================
+//  Insert/Delete Sequences
+// ======================
+#define ANSI_INSERT_LINE(n)    "\x1b[" #n "L"
+#define ANSI_DELETE_LINE(n)    "\x1b[" #n "M"
+#define ANSI_INSERT_CHAR(n)    "\x1b[" #n "@"
+#define ANSI_DELETE_CHAR(n)    "\x1b[" #n "P"
+
+// ======================
+//  Other
+// ======================
+#define ANSI_BELL            "\x07"
+#define ANSI_SOFT_RESET      "\x1b[!p"       // DECSTR
+#define ANSI_HARD_RESET      "\x1b[!p"       // often same as soft on modern terminals
+#define ANSI_ALTERNATE_BUFFER "\x1b[?1049h"
+#define ANSI_MAIN_BUFFER      "\x1b[?1049l"
+#define ANSI_WRAP_ON         "\x1b[?7h"
+#define ANSI_WRAP_OFF        "\x1b[?7l"
+#define ANSI_MOUSE_REPORTING_EXT "\x1b[?1015h" // URXVT style
+
+#endif

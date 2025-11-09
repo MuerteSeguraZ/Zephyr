@@ -15,6 +15,7 @@
 #include <iphlpapi.h>        
 #include <icmpapi.h>
 #include <windows.h>  
+#include <windns.h>
 #include <wuapi.h>
 #include <sddl.h>          
 #include <lmcons.h>       
@@ -79,6 +80,7 @@
 #pragma comment(lib, "setupapi.lib")
 #pragma comment(lib, "cfgmgr32.lib")
 #pragma comment(lib, "Netapi32.lib")
+#pragma comment(lib, "dnsapi.lib")
 #pragma comment(lib, "wbemuuid.lib")
 #pragma comment(lib, "ntdll.lib")
 #pragma comment(lib, "userenv.lib")
@@ -209,6 +211,7 @@ void CmdMemInfo(const std::string& args);
 void CmdMoboInfo(const std::string& args);
 void CmdFSize(const std::string& arg);
 void CmdDrywall(const std::string& args);
+void CmdShadowCopies(const std::string& args);
 bool RunBatchIfExists(const std::string& cmd, const std::string& args);
 size_t DeleteContents(const fs::path& dir);
 void CmdInspect(const std::string& args) {
@@ -286,6 +289,8 @@ if (subcmd == "listusers") {
     CmdListDrives(remainingArgs);
 } else if (subcmd == "listvolumes") {
     CmdListVolumes(remainingArgs);
+} else if (subcmd == "listlockedusers") {
+    CmdListLockedUsers(remainingArgs);
 } else if (subcmd == "help" || subcmd == "?") {
     CmdListHelp(remainingArgs);  
 } else if (subcmd == "usermgmthelp" || subcmd.empty()) {
@@ -346,6 +351,10 @@ void CmdHttp(const std::string& args) {
         CmdHttpUnbind(remainingArgs);
     } else if (subcmd == "patchform") {
         CmdHttpPatchForm(remainingArgs);
+    } else if (subcmd == "hug") {
+        CmdHttpHug(remainingArgs);
+    } else if (subcmd == "upnp") {
+        CmdUpnpSearch(remainingArgs);
     } else if (subcmd == "help" || subcmd == "?") {
         CmdHttpHelp(remainingArgs);
     } else {
@@ -387,7 +396,7 @@ std::unordered_map<std::string, std::function<void(const std::string&)>> command
     {"scan", CmdScanWrapper}, {"hop", CmdHop}, {"stat", CmdStat}, {"fmeta", CmdFMeta}, {"fsize", CmdFSize},
     {"checkadmin", CmdCheckAdminWrapper}, {"dnsflush", CmdDnsFlush}, {"clipclear", CmdClipClear}, {"memdump", CmdMemDump},
     {"firewall", CmdFirewallStatus}, {"drives", CmdDrives}, {"smart", CmdSmartStatus}, {"lsusb", CmdLsusb},
-    {"tar", CmdTar}, {"gzip", CmdGzip}, {"gunzip", CmdGunzip}, {"zip", CmdZip}, {"unzip", CmdUnzip}, 
+    {"tar", CmdTar}, {"gzip", CmdGzip}, {"gunzip", CmdGunzip}, {"zip", CmdZip}, {"unzip", CmdUnzip}, {"shadowcopies", CmdShadowCopies},
     {"grep", CmdGrep}, {"sed", CmdSed}, {"basename", CmdBasename}, {"head", CmdHead}, {"tail", CmdTail}, {"wc", CmdWc}, {"loadavg", CmdLoadAvg}, {"winloadavg", CmdWinLoadAvg},
     {"mounts", CmdMounts}, {"gpuinfo", CmdGPUInfo}, {"biosinfo", CmdBIOSInfo}, {"raminfo", CmdRamInfo}, {"userinfo", CmdUserInfo}, {"whoami", CmdWhoAmI}, {"groups", CmdGroups}, {"hexdump", CmdHexdump},
     {"jobs", CmdJobs}, {"bgjob", CmdBgJob}, {"fgjob", CmdFgJob}, {"stopjob", CmdStopJob}, {"startjob", CmdStartJob}, {"clipcopy", CmdClipCopy},
@@ -4741,20 +4750,21 @@ void CmdBasename(const std::string& args) {
     std::string path;
     iss >> path;
 
-    if (path.empty()) {
-        std::cout << "Usage: basename <path>" << std::endl;
-        return;
-    }
-
     try {
-        std::filesystem::path p(path);
+        std::filesystem::path p;
+
+        if (path.empty()) {
+            // Use current directory if no path provided
+            p = std::filesystem::current_path();
+        } else {
+            p = std::filesystem::path(path);
+        }
+
         std::cout << p.filename().string() << std::endl;
     } catch (const std::exception& e) {
         std::cout << "Error getting basename: " << e.what() << std::endl;
     }
 }
-
-
 
 void CmdRename(const std::string& args) {
     std::istringstream iss(args);
@@ -4842,8 +4852,31 @@ bool contains_case_insensitive(const std::string& haystack, const std::string& n
 }
 
 void CmdDnsFlush(const std::string&) {
-    system("ipconfig /flushdns");
-    std::cout << "DNS cache flushed.\n";
+    HMODULE dnsapi = LoadLibraryW(L"dnsapi.dll");
+    if (!dnsapi) {
+        std::cerr << "Failed to load dnsapi.dll\n";
+        return;
+    }
+
+    typedef DWORD(WINAPI* PFN_DnsFlushResolverCache)();
+    PFN_DnsFlushResolverCache pFunc = (PFN_DnsFlushResolverCache)GetProcAddress(dnsapi, "DnsFlushResolverCache");
+
+    DWORD result = 1; // default failure
+    if (pFunc) {
+        result = pFunc();
+    }
+
+    if (result == 0) {
+        std::cout << "DNS cache flushed successfully.\n";
+    } else {
+        std::cerr << "Failed to flush DNS cache via API, trying ipconfig...\n";
+        if (system("ipconfig /flushdns") == 0)
+            std::cout << "DNS cache flushed via ipconfig.\n";
+        else
+            std::cerr << "Failed to flush DNS cache via ipconfig as well.\n";
+    }
+
+    FreeLibrary(dnsapi);
 }
 
 void CmdGroups(const std::string& args) {
@@ -4973,6 +5006,43 @@ void CmdClipClear(const std::string& args) {
     CloseClipboard();
 }
 
+void CmdShadowCopies(const std::string& args) {
+    (void)args; // unused
+
+    int found = 0;
+
+    std::cout << ANSI_BOLD_CYAN << "[*] Scanning for shadow copies..." << ANSI_RESET << "\n";
+
+    // Try the first 256 shadow copy volumes
+    for (int i = 0; i < 256; ++i) {
+        std::string path = "\\\\?\\GLOBALROOT\\Device\\HarddiskVolumeShadowCopy" + std::to_string(i);
+
+        HANDLE hVolume = CreateFileA(
+            path.c_str(),
+            GENERIC_READ,
+            FILE_SHARE_READ | FILE_SHARE_WRITE,
+            nullptr,
+            OPEN_EXISTING,
+            0,
+            nullptr
+        );
+
+        if (hVolume != INVALID_HANDLE_VALUE) {
+            std::cout << ANSI_BOLD_GREEN << "[+] Found: " << ANSI_RESET
+                      << ANSI_GREEN << path << ANSI_RESET << "\n";
+            CloseHandle(hVolume);
+            ++found;
+        }
+    }
+
+    if (found == 0) {
+        std::cout << ANSI_BOLD_RED << "[-] No shadow copies found." << ANSI_RESET << "\n";
+    } else {
+        std::cout << ANSI_BOLD_YELLOW << "[=] Total shadow copies: " 
+                  << ANSI_BOLD_WHITE << found << ANSI_RESET << "\n";
+    }
+}
+
 bool RunBatchIfExists(const std::string& command, const std::string& args) {
     namespace fs = std::filesystem;
 
@@ -4997,7 +5067,7 @@ void CmdHelp(const std::string&) {
     "| Commands:                                                                                        |\n"
     "| list [dir]          - List directory contents                                                    |\n"
     "| tree                - Show all files in a specified directory (by path)                          |\n"
-    "| hop [dir/noargs/~userhome] - Takes you to a specified directory. If not, says current says info. |\n"
+    "| hop [dir/noargs/~userhome] - Takes you to a specified directory. If not, says current dir info.  |\n"
     "| send <src> <dst>    - Copy file                                                                  |\n"
     "| zap <file>          - Delete file                                                                |\n"
     "| fzap <file>         - Securely wipe and delete a file with multiple overwrite passes             |\n"
@@ -5077,6 +5147,7 @@ void CmdHelp(const std::string&) {
     "| fgjob               - Move a job to the foreground by ID                                         |\n"
     "| clipcopy <file|text>- Copy file contents or raw text to the clipboard                            |\n"
     "| clipclear           - Clear the clipboard                                                        |\n"
+    "| shadowcopies       - List all available shadow copies on the system                              |\n"
     "| memdump <pid> <file> - Dump the memory of a process with PID <pid> into <file>.                  |\n"
     "| meminfo             - Show memory info (RAM, page file, virtual memory)                          |\n"
     "| inspect             - Run this to get the inspect help command.                                  |\n"     

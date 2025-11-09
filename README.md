@@ -40,6 +40,7 @@ Send and analyze various HTTP requests directly from your shell:
 - `http purge <URL> [header1|header2|...] [|payload]` - Send an PURGE request
 - `http report [-H \"Header: value\"] [-D depth] <url> [body]` — Send an HTTP REPORT request
 - `http mkcol [-H \"Header: value\"] <URL> [body]` — Send an HTTP MKCOL request
+- `http hug [-H \"Header: value\"] <URL> [body]` — Send an HTTP HUG request
 - `http help` — HTTP usage reference
 
 ---

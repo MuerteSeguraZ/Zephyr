@@ -69,4 +69,13 @@ std::string WStringToString(const std::wstring& wstr) {
     return str;
 }
 
+std::wstring ToWString(const std::string& str) {
+    if (str.empty()) return std::wstring();
+    int size_needed = MultiByteToWideChar(CP_UTF8, 0, str.data(), (int)str.size(), NULL, 0);
+    if (size_needed <= 0) return std::wstring();
+    std::wstring wstr(size_needed, 0);
+    MultiByteToWideChar(CP_UTF8, 0, str.data(), (int)str.size(), &wstr[0], size_needed);
+    return wstr;
+}
+
 #endif // STRING_CONVERSIONS_H

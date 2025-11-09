@@ -1,14 +1,14 @@
 @echo off
-echo [*] Compilant el fitxer de recursos zephyr.rc...
+echo [*] Compiling the Zephyr resource file...
 
 windres zephyr.rc -O coff -o zephyr_res.o
 if errorlevel 1 (
-    echo [!] Compilació dels recursos fallada.
+    echo [!] Compilation of the resource file failed.
     pause
     exit /b 1
 )
 
-echo [*] Compilant zephyr.cpp amb la icona...
+echo [*] Compiling Zephyr with the icon...
 
 g++ zephyr.cpp bigcommands/inspect.cpp list/list.cpp http/http.cpp diagnostics/diagnostics.cpp zephyr_res.o -o zephyr.exe ^
   -static -static-libgcc -static-libstdc++ ^
@@ -18,13 +18,13 @@ g++ zephyr.cpp bigcommands/inspect.cpp list/list.cpp http/http.cpp diagnostics/d
   -lwevtapi -lshlwapi -lwintrust
 
 if errorlevel 1 (
-    echo [!] Compilació fallada.
+    echo [!] Compilation failed.
     pause
     exit /b 1
 )
 
-echo [✓] Compilació exitosa.
-echo [*] Executant zephyr.exe com a administrador...
+echo [✓] Compilation successful!
+echo [*] Executing Zephyr with administrative privileges...
 powershell -Command "Start-Process zephyr.exe -Verb RunAs"
 
 pause

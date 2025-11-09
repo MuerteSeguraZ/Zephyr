@@ -23,4 +23,6 @@ void CmdHttpMkcol(const std::string& args);
 void CmdHttpBind(const std::string& args);
 void CmdHttpRebind(const std::string& args);
 void CmdHttpUnbind(const std::string& args);
+void CmdHttpHug(const std::string& args);
+void CmdUpnpSearch(const std::string& args);
 void CmdHttpHelp(const std::string& args);

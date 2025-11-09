@@ -18,6 +18,7 @@ void CmdListGroupMembers(const std::string& args);
 void CmdListRemoteSessions(const std::string& args);
 void CmdListDisabledUsers(const std::string& args);
 void CmdListLastLogons(const std::string& args);
+void CmdListLockedUsers(const std::string& args);
 void CmdListDrives(const std::string& args);
 void CmdListVolumes(const std::string& args);
 void CmdListHelp(const std::string& args);
