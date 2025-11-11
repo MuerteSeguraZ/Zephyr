@@ -157,7 +157,6 @@ void ExecuteCommand(const std::string& input);
 void CmdSconfig(const std::string& args);
 void CmdMConfig(const std::string& args);
 void CmdVersion(const std::string& args);
-void CmdCuteMessage(const std::string& args);
 void CmdSmLink(const std::string& args);
 void CmdProcMon(const std::string& args);
 void CmdCpuInfo(const std::string& args);
@@ -210,7 +209,6 @@ void CmdMemDump(const std::string& args);
 void CmdMemInfo(const std::string& args);
 void CmdMoboInfo(const std::string& args);
 void CmdFSize(const std::string& arg);
-void CmdDrywall(const std::string& args);
 void CmdShadowCopies(const std::string& args);
 bool RunBatchIfExists(const std::string& cmd, const std::string& args);
 size_t DeleteContents(const fs::path& dir);
@@ -375,21 +373,29 @@ void CmdDiagnostics(const std::string& args) {
         CmdDiagnosticsIntegrity(remainingArgs);
     } else if (subcmd == "drivers") {
         CmdDiagnosticsDrivers(remainingArgs);
-    } 
+    } else if (subcmd == "defender") {
+        CmdDiagnosticsDefender(remainingArgs);
+    } else if (subcmd == "tasks") {
+        CmdDiagnosticsTasks(remainingArgs);
+    } else if (subcmd == "help" || subcmd == "?") {
+        CmdDiagnosticsHelp(remainingArgs);
+    } else {
+        CmdDiagnosticsHelp(remainingArgs);
+    }
 }
 
 std::unordered_map<std::string, std::function<void(const std::string&)>> commands = {
     {"list", CmdList}, {"tree", CmdTreeList}, {"send", CmdSend}, {"zap", CmdZap}, {"fzap", CmdFZap}, {"fhash", CmdFHash}, {"shift", CmdShift},
-    {"mkplace", CmdMkplace}, {"clear", CmdClear}, {"bye", CmdBye},
+    {"mkplace", CmdMkplace}, {"clear", CmdClear}, {"cls", CmdClear}, {"bye", CmdBye},
     {"look", CmdLook}, {"read", CmdRead}, {"peek", CmdPeek}, {"write", CmdWrite},
     {"run", CmdRun}, {"echoe", CmdEchoe}, {"whereami", CmdWhereami},
     {"sysinfo", CmdSysinfo}, {"battery", CmdBattery}, {"touch", CmdTouch}, {"find", CmdFind},
     {"date", CmdDate}, {"env", CmdEnv}, {"refreshenv", CmdRefreshEnv},
     {"help", CmdHelp}, {"?", CmdHelp},
-    {"rename", CmdRename}, {"radar", CmdRadar}, {"endproc", CmdEndproc}, {"drywallmaster", CmdDrywall}, 
+    {"rename", CmdRename}, {"radar", CmdRadar}, {"endproc", CmdEndproc},
     {"linkup", CmdLinkup}, {"ntwkadp", CmdNetworkAdapters}, {"diskinfo", CmdDiskInfo}, {"du", CmdDU},
     {"ctitle", CmdSetTitle}, {"sconfig", CmdSconfig}, {"startupapps", CmdStartupApps}, 
-    {"mconfig", CmdMConfig}, {"version", CmdVersion}, {"cutemessage", CmdCuteMessage},
+    {"mconfig", CmdMConfig}, {"version", CmdVersion},
     {"smlink", CmdSmLink}, {"procmon", CmdProcMon},  {"meminfo", CmdMemInfo}, {"motherbinfo", CmdMoboInfo},
     {"cpuinfo", CmdCpuInfo}, {"uptime", CmdUptime}, {"netstat", CmdNetstat}, {"mirror", CmdMirror}, 
     {"tempclean", CmdTempClean}, {"killtree", CmdKillTree}, {"pingtest", CmdPingTest}, 
@@ -3802,8 +3808,8 @@ void CmdWinLoadAvg(const std::string&) {
 
 
 void CmdVersion(const std::string&) {
-    printf("Zephyr Version 1.0.2\n");
-    printf("Update: HTTP Client!\n");
+    printf("Zephyr Version 3.0\n");
+    printf("Update: More Sysinternal Stuff!\n");
     printf("Built on %s at %s\n", __DATE__, __TIME__);
     printf("Using Windows API: %s\n", _WIN32_WINNT >= 0x0601 ? "Windows 7+" : "Older version");
     printf("Using C++ Standard: %s\n", __cplusplus == 201703L ? "C++17" : "Unknown");
@@ -3812,23 +3818,6 @@ void CmdVersion(const std::string&) {
     printf("Current Directory: %s\n", GetCurrentDir().c_str());
     printf("Creator: %s\n", "MuerteSeguraZ");
     
-}
-
-void CmdDrywall(const std::string& args) {
-    (void)args;
-    std::cout << ANSI_BOLD_RED "EASILY FLUSTERED!" << ANSI_RESET << std::endl;
-    std::cout << ANSI_BOLD_RED "IS A BOYKISSER (OMG CUTE?)!" << ANSI_RESET << std::endl;
-    std::cout << ANSI_BOLD_RED "IS A BOTTOM!" << ANSI_RESET << std::endl;
-    std::cout << ANSI_BOLD_RED "LOVES CUDDLES (plus points :3)" << ANSI_RESET << std::endl;
-    std::cout << ANSI_BOLD_RED "CLINGY AND AFFECTIONATE (MORE PLUS POINTS!!!!!)" << ANSI_RESET << std::endl;
-}
-
-void CmdCuteMessage(const std::string&) {
-    printf("This for my gf, Joselyn.\n");
-    printf("I'll love you everyday of my existence.\n");
-    printf("Even if things get freaky in DMs I'll still flow with that.\n");
-    printf("We got together against all odds, and I'm grateful we did that.\n");
-    printf("I love you.\n");
 }
 
 void CmdSmLink(const std::string& args) {
@@ -5119,7 +5108,6 @@ void CmdHelp(const std::string&) {
     "| pingtest <host>     - Ping a host and display results continuously                               |\n"
     "| scan <host>         - Scan for open ports on a host                                              |\n"
     "| stat <filename>     - Prints statistics of a given file                                          |\n"
-    "| cutemessage         - This is for my gf guys please don't run it                                 |\n"
     "| checkadmin          - Check if the process is running as admin                                   |\n"
     "| dnsflush            - Flush DNS resolver cache                                                   |\n"
     "| firewall            - Show Windows firewall status                                               |\n"

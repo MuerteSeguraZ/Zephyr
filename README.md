@@ -41,6 +41,7 @@ Send and analyze various HTTP requests directly from your shell:
 - `http report [-H \"Header: value\"] [-D depth] <url> [body]` — Send an HTTP REPORT request
 - `http mkcol [-H \"Header: value\"] <URL> [body]` — Send an HTTP MKCOL request
 - `http hug [-H \"Header: value\"] <URL> [body]` — Send an HTTP HUG request
+- `http upnp`                   : Send a UPnP discovery request.
 - `http help` — HTTP usage reference
 
 ---
@@ -65,6 +66,12 @@ Get detailed insights into your OS, files, processes, memory, and more:
 
 ---
 
+### 📈 Diagnostics
+Powerful diagnostic tools for system integrity and security:
+- `diagnostics integrity [--json|--count|--hotfixid=ID|--after=YYYY-MM-DD]` — Check system file integrity
+- `diagnostics drivers [--unsigned|--all|--json]` — List loaded drivers
+- `diagnostics defender [--json]` — Check Windows Defender status
+
 ### 📁 File & Directory Commands
 Efficiently manage files, directories, and navigation:
 - `list`, `tree`, `look`, `hop`, `whereami`
@@ -88,7 +95,7 @@ Explore and control system components:
 - `battery`, `diskinfo`, `du`, `drives`, `smart`
 - `procmon`, `killtree <pid>`, `endproc <name>`
 - `sconfig <start|stop> <service>`, `mconfig <device> <enable|disable>`
-- `checkadmin`, `dnsflush`, `firewall`, `env`, `refreshenv`, `date`
+- `checkadmin`, `dnsflush`, `firewall`, `env`, `refreshenv`, `date`, `shadowcopies`
 - `bgjob`, `fgjob`, `startjob <command>`, `stopjob <jobid>`, `jobs`
 ---
 
@@ -96,7 +103,6 @@ Explore and control system components:
 Network diagnostics and monitoring built-in:
 - `linkup`, `ntwkadp`, `netstat`
 - `pingtest <host>`, `scan <host>`
-- `get <url>`, `post`, `header`
 
 ---
 
@@ -104,7 +110,6 @@ Network diagnostics and monitoring built-in:
 - `run <program>` — Execute an external program
 - `bye`, `exit`, `clear` — Exit or refresh shell
 - `clipcopy`, `clipclear` - Copy text to clipboard or clear clipboard
-- `cutemessage` — 💖 A special hidden feature for someone special
 - `help`, `?` — View all available commands
 
 ---
@@ -129,9 +134,7 @@ Network diagnostics and monitoring built-in:
 
 # Credits
 `Created with care by Muerte. More updates to come.`
-`To see proof it works, you can check workingproof/ for some examples of commands.`
-
-
+`"WE AINT PLAYING NO GAMES HERE 🗣🗣🗣"`
 
 ## 📦 Build & Run
 

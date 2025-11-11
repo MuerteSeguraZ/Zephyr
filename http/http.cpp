@@ -3183,6 +3183,7 @@ void CmdHttpHelp(const std::string& args) {
     std::cout << " - http patch [-H \"Header\"] [-d \"body\"] <url> : Send an HTTP PATCH request.\n";
     std::cout << " - http patchform [-H \"Header\"] [-d \"body\"] <url> : Send an HTTP PATCH request with form data.\n";
     std::cout << " - http purge <URL> [header1|header2|...] [|payload] : Send an HTTP PURGE request.\n";
+    std::cout << " - http upnp                   : Send a UPnP discovery request.\n";   
     std::cout << " - http help                               : Show this help message.\n";
     std::cout << ANSI_BOLD_YELLOW "---------------------------------\n" << ANSI_RESET;
 }

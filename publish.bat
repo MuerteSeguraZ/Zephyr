@@ -3,7 +3,7 @@
 git add --all
 
 set "MSG=%~1"
-if "%MSG%"=="" set "MSG=few bug fixes and shadowcopies command"
+if "%MSG%"=="" set "MSG=more diagnostic commands (drivers fix, defender, tasks)"
 
 git status
 
