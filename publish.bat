@@ -3,7 +3,7 @@
 git add --all
 
 set "MSG=%~1"
-if "%MSG%"=="" set "MSG=more diagnostic commands (drivers fix, defender, tasks)"
+if "%MSG%"=="" set "MSG=Added folder support for fzap"
 
 git status
 

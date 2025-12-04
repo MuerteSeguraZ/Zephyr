@@ -41,7 +41,7 @@ Send and analyze various HTTP requests directly from your shell:
 - `http report [-H \"Header: value\"] [-D depth] <url> [body]` — Send an HTTP REPORT request
 - `http mkcol [-H \"Header: value\"] <URL> [body]` — Send an HTTP MKCOL request
 - `http hug [-H \"Header: value\"] <URL> [body]` — Send an HTTP HUG request
-- `http upnp`                   : Send a UPnP discovery request.
+- `http upnp`                   — Send a UPnP discovery request.
 - `http help` — HTTP usage reference
 
 ---
@@ -71,6 +71,7 @@ Powerful diagnostic tools for system integrity and security:
 - `diagnostics integrity [--json|--count|--hotfixid=ID|--after=YYYY-MM-DD]` — Check system file integrity
 - `diagnostics drivers [--unsigned|--all|--json]` — List loaded drivers
 - `diagnostics defender [--json]` — Check Windows Defender status
+- `diagnostics tasks [--json|--last-run|--enabled|--disabled]` — List scheduled tasks
 
 ### 📁 File & Directory Commands
 Efficiently manage files, directories, and navigation:

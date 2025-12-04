@@ -212,6 +212,7 @@ void CmdFSize(const std::string& arg);
 void CmdShadowCopies(const std::string& args);
 bool RunBatchIfExists(const std::string& cmd, const std::string& args);
 size_t DeleteContents(const fs::path& dir);
+
 void CmdInspect(const std::string& args) {
     std::istringstream iss(args);
     std::string subcmd;
@@ -2777,6 +2778,24 @@ void SecureOverwriteFile(const std::string& filename, int passes, bool useRandom
     }
 }
 
+void SecureOverwriteFolder(const fs::path& folder, int passes, bool useRandom)
+{
+    for (const auto& entry : fs::recursive_directory_iterator(folder))
+    {
+        if (entry.is_regular_file())
+        {
+            try
+            {
+                SecureOverwriteFile(entry.path().string(), passes, useRandom);
+            }
+            catch (...)
+            {
+                std::cout << "Failed to overwrite: " << entry.path().string() << "\n";
+            }
+        }
+    }
+}
+
 void CmdFZap(const std::string& args)
 {
     std::istringstream iss(args);
@@ -2786,11 +2805,12 @@ void CmdFZap(const std::string& args)
 
     if (tokens.empty())
     {
-        std::cout << "Usage: fzap <filename> [passes] [zero|random]\n";
+        std::cout << "Usage: fzap <filename|folder> [passes] [zero|random]\n";
         return;
     }
 
-    std::string filename = tokens[0];
+    std::string pathStr = tokens[0];
+    fs::path target = pathStr;
     int passes = 3;  
     bool useRandom = false;
 
@@ -2821,7 +2841,22 @@ void CmdFZap(const std::string& args)
             std::cout << "Unknown mode '" << tokens[2] << "'. Use 'zero' or 'random'. Defaulting to zero.\n";
     }
 
-    SecureOverwriteFile(filename, passes, useRandom);
+    // --- New: Detect file vs folder ---
+    if (!fs::exists(target))
+    {
+        std::cout << "Path does not exist: " << pathStr << "\n";
+        return;
+    }
+
+    if (fs::is_directory(target))
+    {
+        std::cout << "Overwriting all files inside folder: " << pathStr << "\n";
+        SecureOverwriteFolder(target, passes, useRandom);
+    }
+    else
+    {
+        SecureOverwriteFile(pathStr, passes, useRandom);
+    }
 }
 
 void CmdShift(const std::string& args) {
